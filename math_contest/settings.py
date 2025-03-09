@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-s$e#l1fb8&d4-ogx(urigy_495b1*qsow5p4^ml1jir&4vom@a
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["TOHOMC.onrender.com", "localhost"]
+ALLOWED_HOSTS = ['*.onrender.com', 'localhost', '127.0.0.1']  # Render用とローカル用
 
 
 # Application definition
@@ -75,11 +75,15 @@ WSGI_APPLICATION = 'math_contest.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+
 import dj_database_url
 import os
 
 DATABASES = {
-    'default': dj_database_url.config(default=os.getenv("DATABASE_URL"))
+    'default': dj_database_url.config(
+        default=os.getenv('DATABASE_URL'),  # Renderが提供するDATABASE_URLを使用
+        conn_max_age=600
+    )
 }
 
 
@@ -128,5 +132,5 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
