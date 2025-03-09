@@ -30,7 +30,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'TOHOMC.urls'
+ROOT_URLCONF = 'urls'
 
 TEMPLATES = [
     {
@@ -48,7 +48,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'TOHOMC.wsgi.application'
+WSGI_APPLICATION = 'wsgi.application'
 
 import dj_database_url
 import os
