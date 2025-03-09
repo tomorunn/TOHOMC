@@ -53,15 +53,16 @@ WSGI_APPLICATION = 'math_contest.wsgi.application'
 import dj_database_url
 import os
 
-# DATABASE_URLが必須
 DATABASE_URL = os.getenv('DATABASE_URL')
+print(f"DATABASE_URL: {DATABASE_URL}")  # デバッグ用ログ
+
 if not DATABASE_URL:
     raise ValueError('DATABASE_URL environment variable must be set for Render deployment')
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=DATABASE_URL,
-        conn_max_age=600
+    default=DATABASE_URL,
+    conn_max_age=600
     )
 }
 
