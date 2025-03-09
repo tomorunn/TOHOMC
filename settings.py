@@ -30,7 +30,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'math_contest.urls'
+ROOT_URLCONF = 'TOHOMC.urls'
 
 TEMPLATES = [
     {
@@ -48,7 +48,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'math_contest.wsgi.application'
+WSGI_APPLICATION = 'TOHOMC.wsgi.application'
 
 import dj_database_url
 import os
