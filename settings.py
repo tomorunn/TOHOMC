@@ -49,21 +49,24 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'wsgi.application'
 
-import dj_database_url
 import os
+import dj_database_url
 
-DATABASE_URL = os.getenv('DATABASE_URL')
-print(f"DATABASE_URL: {DATABASE_URL}")  # デバッグ用ログ
-
-if not DATABASE_URL:
-    raise ValueError('DATABASE_URL environment variable must be set for Render deployment')
-
+# Render用: DATABASE_URLから取得
 DATABASES = {
-    'default': dj_database_url.config(
-    default=DATABASE_URL,
-    conn_max_age=600
-    )
+    'default': dj_database_url.config(default=os.getenv('DATABASE_URL'))
 }
+
+# ローカル環境ではSQLiteを使用するデフォルト設定を追加
+if not DATABASES['default'].get('ENGINE'):
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+    }
+
+# Renderでの必須チェックはコメントアウトまたは条件付き
+# if not DATABASES['default'].get('ENGINE') == 'django.db.backends.postgresql':
+#     raise ValueError('DATABASE_URL environment variable must be set for Render deployment')
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
