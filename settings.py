@@ -6,9 +6,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your-secret-key-here')  # 後で環境変数に
 
-DEBUG = False  # RenderではFalse
-
-ALLOWED_HOSTS = ['*.onrender.com']
+DEBUG = True
+ALLOWED_HOSTS = ['*']  # 開発用に一時的に全て許可
 
 INSTALLED_APPS = [
     'django.contrib.admin',
