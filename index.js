@@ -97,6 +97,7 @@ const loadContests = async () => {
             managers: contest.managers || [],
             submissions: contest.submissions || [],
             review: contest.review || '',
+            submissionLimit: contest.submissionLimit || 10, // デフォルトを10に設定
         }));
     } catch (err) {
         console.error('コンテストの読み込みエラー:', err);
@@ -156,7 +157,7 @@ const generateNav = (user) => {
     `;
 };
 
-// TeX内容を左揃えにするためのラッパー関数
+// TeX内容を左揃えにし、自動改行を追加するラッパー関数
 const wrapWithFlalign = (content) => {
     if (!content) return '';
     if (content.includes('\\begin{flalign}') || content.includes('\\end{flalign}')) {
@@ -164,8 +165,21 @@ const wrapWithFlalign = (content) => {
     }
     const displayMathPattern = /\$\$(.*?)\$\$|\[(.*?)\]/gs;
     return content.replace(displayMathPattern, (match, p1, p2) => {
-        const innerContent = p1 || p2 || '';
-        return `$$\\begin{flalign}${innerContent}\\end{flalign}$$`;
+        let innerContent = p1 || p2 || '';
+        // 長い数式を自動改行（例: 25文字ごとに \\ を挿入）
+        const MAX_LINE_LENGTH = 25;
+        let formattedContent = '';
+        let currentLine = '';
+        innerContent.split(' ').forEach((token) => {
+            if (currentLine.length + token.length > MAX_LINE_LENGTH) {
+                formattedContent += currentLine + '\\\\\n';
+                currentLine = token + ' ';
+            } else {
+                currentLine += token + ' ';
+            }
+        });
+        formattedContent += currentLine.trim();
+        return `$$\\begin{flalign}${formattedContent}\\end{flalign}$$`;
     });
 };
 
@@ -485,63 +499,6 @@ app.post('/register', async (req, res) => {
     }
 });
 
-// ルート：管理者ダッシュボード
-app.get('/admin', async (req, res) => {
-    try {
-        const user = await getUserFromCookie(req);
-        console.log('Accessing /admin, user:', user);
-        if (!user || !user.username) {
-            console.log('No user found, redirecting to /login');
-            return res.redirect('/login');
-        }
-        if (!user.isAdmin) {
-            console.log('User is not admin, redirecting to /contests');
-            return res.redirect('/contests');
-        }
-        const contests = await loadContests();
-        const nav = generateNav(user);
-        const content = `
-            <section class="hero">
-                <h2>管理者ダッシュボード</h2>
-                <p>ここでコンテストとユーザーの管理ができます。</p>
-                <form action="/admin/add-contest" method="GET">
-                    <button type="submit">コンテストを追加</button>
-                </form>
-                <h3>現在のコンテスト</h3>
-                <ul>
-                    ${
-                        contests
-                            .map(
-                                (contest, index) => {
-                                    const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-                                    const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-                                    return `
-                                        <li>
-                                            ${contest.title} (開始: ${start}, 終了: ${end})
-                                            <form action="/admin/delete-contest" method="POST" style="display:inline;">
-                                                <input type="hidden" name="index" value="${index}">
-                                                <button type="submit">削除</button>
-                                            </form>
-                                            <a href="/admin/contest-details/${index}">詳細</a>
-                                            <a href="/admin/edit-contest/${index}">編集</a>
-                                        </li>
-                                    `;
-                                }
-                            )
-                            .join('') || '<p>コンテストがありません</p>'
-                    }
-                </ul>
-                <h3>ユーザー管理</h3>
-                <a href="/admin/users">ユーザー管理ページへ</a>
-            </section>
-        `;
-        res.send(generatePage(nav, content));
-    } catch (err) {
-        console.error('管理者ダッシュボードエラー:', err);
-        res.status(500).send("サーバーエラーが発生しました");
-    }
-});
-
 // ルート：コンテスト追加
 app.get('/admin/add-contest', async (req, res) => {
     try {
@@ -562,6 +519,11 @@ app.get('/admin/add-contest', async (req, res) => {
                     <input type="datetime-local" name="endTime" required><br>
                     <label>問題数:</label><br>
                     <input type="number" name="problemCount" min="1" placeholder="問題数" required><br>
+                    <label>1問題あたりの提出制限 (デフォルトは10):</label><br>
+                    <select name="submissionLimit">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                    </select><br>
                     <button type="submit">コンテストを作成</button>
                 </form>
                 <p><a href="/admin">管理者ダッシュボードに戻る</a></p>
@@ -578,7 +540,7 @@ app.post('/admin/add-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
-        const { title, description, startTime, endTime, problemCount } = req.body;
+        const { title, description, startTime, endTime, problemCount, submissionLimit } = req.body;
         const contests = await loadContests();
         const numProblems = parseInt(problemCount);
         const problemIds = generateProblemIds(numProblems);
@@ -607,6 +569,7 @@ app.post('/admin/add-contest', async (req, res) => {
             submissions: [],
             problemCount: numProblems,
             review: '',
+            submissionLimit: parseInt(submissionLimit) || 10, // デフォルト10
         });
         await saveContests(contests);
         res.redirect('/admin');
@@ -1326,7 +1289,7 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
 
         let displayExplanation = problem.explanation || '未設定';
         displayExplanation = displayExplanation.replace(/\n(?![ \t]*\$)/g, '<br>');
-        displayExplanation = wrapWithFlalign(displayExplanation);
+        displayExplanation = wrapWithFlalign(displayExplanation); // TeXプレビューを追加
 
         const nav = generateNav(user);
         const content = `
@@ -1375,6 +1338,7 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
         }
 
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+        const submissionLimit = contest.submissionLimit || 10; // デフォルト10
         const submissionsDuringContest = (contest.submissions || [])
             .filter(
                 (sub) =>
@@ -1382,11 +1346,11 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
                     sub.problemId === problemId &&
                     new Date(sub.date).getTime() <= endTime,
             );
-        if (isContestStartedOrActive(contest) && submissionsDuringContest.length >= 10) {
+        if (isContestStartedOrActive(contest) && submissionsDuringContest.length >= submissionLimit) {
             return res
                 .status(403)
                 .send(
-                    'コンテスト中にこの問題に提出できるのは10回までです。 <a href="/contest/' +
+                    `コンテスト中にこの問題に提出できるのは${submissionLimit}回までです。 <a href="/contest/` +
                         contestId +
                         '/submit/' +
                         problemId +
@@ -1706,6 +1670,11 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                     <input type="text" name="writers" value="${
                         contest.writers.join(', ') || ''
                     }" required><br>
+                    <label>1問題あたりの提出制限 (デフォルトは10):</label><br>
+                    <select name="submissionLimit">
+                        <option value="5" ${contest.submissionLimit === 5 ? 'selected' : ''}>5</option>
+                        <option value="10" ${contest.submissionLimit === 10 ? 'selected' : ''}>10</option>
+                    </select><br>
                     <h3>問題設定</h3>
                     ${problemIds
                         .map((problemId) => {
@@ -1774,6 +1743,7 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
             .filter((w) => w);
         const title = req.body.title || contest.title;
         const description = req.body.description || contest.description;
+        const submissionLimit = parseInt(req.body.submissionLimit) || 10; // デフォルト10
         const problemIds = generateProblemIds(contest.problemCount);
 
         const problems = problemIds.map((problemId) => {
@@ -1793,6 +1763,7 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
         contest.testers = testers;
         contest.writers = writers;
         contest.problems = problems;
+        contest.submissionLimit = submissionLimit;
         await saveContests(contests);
         res.redirect(`/admin/contest-details/${contestId}`);
     } catch (err) {
@@ -1841,91 +1812,43 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                 <div class="problem-display">
                     <p>内容: <span class="math-tex">${displayContent}</span></p>
                     <p>点数: ${problem.score}</p>
-                    <p>作成者: ${problem.writer}</p>
+                    <p>作成者: ${problem.writer || '未設定'}</p>
+                    <p>正解: ${problem.correctAnswer || '未設定'}</p>
                     ${
                         problem.image
                             ? `<p>画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>`
-                            : ''
+                            : '<p>画像: 未設定</p>'
                     }
+                    <p>解説: <span class="math-tex">${
+                        problem.explanation ? wrapWithFlalign(problem.explanation.replace(/\n(?![ \t]*\$)/g, '<br>')) : '未設定'
+                    }</span></p>
                 </div>
-                <form method="POST" action="/admin/problem/${contestId}/${problemId}" class="problem-form">
-                    <label>内容 (TeX使用可, $$...$$で囲む。複数行は\\を使用。左揃えにする場合は\\begin{flalign}を使用):</label><br>
-                    <textarea name="content">${problem.content || ''}</textarea><br>
+                <form method="POST" action="/admin/problem/${contestId}/${problemId}" enctype="multipart/form-data">
+                    <label>問題内容 (TeX使用可, $$...$$で囲む。複数行は\\を使用。左揃えにする場合は\\begin{flalign}を使用):</label><br>
+                    <textarea name="content" placeholder="問題内容">${problem.content || ''}</textarea><br>
                     <label>点数:</label><br>
-                    <input type="number" name="score" value="${problem.score}" required><br>
+                    <input type="number" name="score" value="${problem.score || 100}" required><br>
                     <label>作成者:</label><br>
-                    <input type="text" name="writer" value="${problem.writer}" required><br>
+                    <input type="text" name="writer" value="${problem.writer || ''}" placeholder="作成者"><br>
                     <label>正解:</label><br>
-                    <input type="text" name="correctAnswer" value="${
-                        problem.correctAnswer || ''
-                    }" placeholder="正解を入力 (例: 42, x=5)"><br>
-                    <label>画像URL (手動入力またはアップロード後自動反映):</label><br>
-                    <input type="text" name="image" value="${
-                        problem.image || ''
-                    }" placeholder="画像のURLを入力"><br>
-                    <label>解答解説 (TeX使用可):</label><br>
-                    <textarea name="explanation">${problem.explanation || ''}</textarea><br>
+                    <input type="text" name="correctAnswer" value="${problem.correctAnswer || ''}" placeholder="正解を入力 (例: 42, x=5)"><br>
+                    <label>解説 (TeX使用可):</label><br>
+                    <textarea name="explanation" placeholder="解答解説">${problem.explanation || ''}</textarea><br>
+                    <label>画像アップロード:</label><br>
+                    <input type="file" name="image" accept="image/*"><br>
                     <button type="submit">保存</button>
                 </form>
-                <form method="POST" action="/admin/problem/${contestId}/${problemId}/upload" enctype="multipart/form-data" class="upload-form">
-                    <label>画像をアップロード:</label><br>
-                    <input type="file" name="image" accept="image/*" required><br>
-                    <button type="submit">アップロード</button>
-                </form>
-                <p><a href="/admin/contest-details/${contestId}">戻る</a></p>
+                <p><a href="/admin/contest-details/${contestId}">コンテスト詳細に戻る</a></p>
             </section>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('問題詳細（管理者）エラー:', err);
-        res.status(500).send('サーバーエラーが発生しました');
-    }
-});
-
-app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
-    try {
-        const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
-        const contests = await loadContests();
-        const contestId = parseInt(req.params.contestId);
-        const problemId = req.params.problemId;
-
-        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-            return res.status(404).send('無効なコンテストIDです');
-        }
-        const contest = contests[contestId];
-        if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
-        }
-
-        const problemIndex = contest.problems.findIndex((p) => p.id === problemId);
-        if (problemIndex === -1) {
-            return res.status(404).send('無効な問題IDです');
-        }
-
-        const { content, score, writer, correctAnswer, image, explanation } = req.body;
-        contest.problems[problemIndex] = {
-            id: problemId,
-            content: content || '',
-            score: parseInt(score) || 100,
-            writer: writer || '未設定',
-            correctAnswer: correctAnswer || '',
-            image: image || '',
-            explanation: explanation || '',
-        };
-
-        await saveContests(contests);
-        res.redirect(`/admin/problem/${contestId}/${problemId}`);
-    } catch (err) {
-        console.error('問題更新エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
 
-// ルート：問題画像アップロード
-app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
+app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user || !user.username) return res.redirect('/login');
@@ -1949,28 +1872,39 @@ app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
             return res.status(404).send('無効な問題IDです');
         }
 
-        if (!req.files || !req.files.image) {
-            return res
-                .status(400)
-                .send('画像がアップロードされていません <a href="/admin/problem/' + contestId + '/' + problemId + '">戻る</a>');
-        }
+        const form = formidable({ multiples: true });
+        form.parse(req, async (err, fields, files) => {
+            if (err) {
+                console.error('フォーム解析エラー:', err);
+                return res.status(500).send("フォーム解析エラーが発生しました");
+            }
 
-        const file = req.files.image;
-        const uploadResult = await new Promise((resolve, reject) => {
-            cloudinary.uploader.upload_stream(
-                { resource_type: 'image' },
-                (error, result) => {
-                    if (error) reject(error);
-                    else resolve(result);
+            problem.content = fields.content || problem.content || '';
+            problem.score = parseInt(fields.score) || problem.score || 100;
+            problem.writer = fields.writer || problem.writer || '';
+            problem.correctAnswer = fields.correctAnswer || problem.correctAnswer || '';
+            problem.explanation = fields.explanation || problem.explanation || ''; // 解説を更新
+
+            // 画像アップロード処理
+            if (files.image && files.image.size > 0) {
+                const filePath = files.image.filepath || files.image.path; // formidableのバージョン依存を考慮
+                try {
+                    const result = await cloudinary.uploader.upload(filePath, {
+                        folder: 'contest_problems',
+                    });
+                    problem.image = result.secure_url;
+                    console.log('画像アップロード成功:', problem.image);
+                } catch (uploadErr) {
+                    console.error('Cloudinaryアップロードエラー:', uploadErr);
+                    return res.status(500).send("画像アップロードに失敗しました");
                 }
-            ).end(file.data);
-        });
+            }
 
-        problem.image = uploadResult.secure_url;
-        await saveContests(contests);
-        res.redirect(`/admin/problem/${contestId}/${problemId}`);
+            await saveContests(contests);
+            res.redirect(`/admin/problem/${contestId}/${problemId}`);
+        });
     } catch (err) {
-        console.error('画像アップロードエラー:', err);
+        console.error('問題更新処理エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
@@ -1988,22 +1922,23 @@ app.get('/admin/users', async (req, res) => {
                 <table class="user-table">
                     <tr><th>ユーザー名</th><th>管理者</th><th>操作</th></tr>
                     ${users
-                        .map((u, index) => `
+                        .map((u) => `
                             <tr>
                                 <td>${u.username}</td>
                                 <td>${u.isAdmin ? 'はい' : 'いいえ'}</td>
                                 <td>
                                     <form action="/admin/toggle-admin" method="POST" style="display:inline;">
-                                        <input type="hidden" name="index" value="${index}">
-                                        <button type="submit">${u.isAdmin ? '管理者権限を剥奪' : '管理者にする'}</button>
+                                        <input type="hidden" name="username" value="${u.username}">
+                                        <button type="submit">${u.isAdmin ? '管理者解除' : '管理者にする'}</button>
                                     </form>
                                     <form action="/admin/delete-user" method="POST" style="display:inline;">
-                                        <input type="hidden" name="index" value="${index}">
+                                        <input type="hidden" name="username" value="${u.username}">
                                         <button type="submit">削除</button>
                                     </form>
                                 </td>
                             </tr>
-                        `).join('')}
+                        `)
+                        .join('')}
                 </table>
                 <p><a href="/admin">管理者ダッシュボードに戻る</a></p>
             </section>
@@ -2015,24 +1950,17 @@ app.get('/admin/users', async (req, res) => {
     }
 });
 
-// ルート：管理者権限の切り替え
 app.post('/admin/toggle-admin', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
+        const { username } = req.body;
         const users = await loadUsers();
-        const index = parseInt(req.body.index);
-
-        if (isNaN(index) || index < 0 || index >= users.length) {
-            return res.status(404).send('無効なユーザーインデックスです');
+        const targetUser = users.find((u) => u.username === username);
+        if (targetUser) {
+            targetUser.isAdmin = !targetUser.isAdmin;
+            await saveUsers(users);
         }
-
-        if (users[index].username === user.username) {
-            return res.status(403).send('自分自身の管理者権限は変更できません <a href="/admin/users">戻る</a>');
-        }
-
-        users[index].isAdmin = !users[index].isAdmin;
-        await saveUsers(users);
         res.redirect('/admin/users');
     } catch (err) {
         console.error('管理者権限切り替えエラー:', err);
@@ -2040,24 +1968,14 @@ app.post('/admin/toggle-admin', async (req, res) => {
     }
 });
 
-// ルート：ユーザー削除
 app.post('/admin/delete-user', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
+        const { username } = req.body;
         const users = await loadUsers();
-        const index = parseInt(req.body.index);
-
-        if (isNaN(index) || index < 0 || index >= users.length) {
-            return res.status(404).send('無効なユーザーインデックスです');
-        }
-
-        if (users[index].username === user.username) {
-            return res.status(403).send('自分自身を削除することはできません <a href="/admin/users">戻る</a>');
-        }
-
-        users.splice(index, 1);
-        await saveUsers(users);
+        const updatedUsers = users.filter((u) => u.username !== username);
+        await saveUsers(updatedUsers);
         res.redirect('/admin/users');
     } catch (err) {
         console.error('ユーザー削除エラー:', err);
@@ -2067,12 +1985,6 @@ app.post('/admin/delete-user', async (req, res) => {
 
 // サーバー起動
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
     console.log(`サーバーがポート${PORT}で起動しました`);
-    try {
-        await connectToMongo();
-        console.log('MongoDBに接続済み');
-    } catch (err) {
-        console.error('MongoDB接続に失敗しました:', err);
-    }
 });
