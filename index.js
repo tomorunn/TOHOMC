@@ -29,33 +29,73 @@ fs.mkdir(uploadDir, { recursive: true }).catch(err => console.error('アップ�
 const uri = process.env.MONGO_URI;
 if (!uri) {
     console.error("エラー: MONGO_URIが環境変数に設定されていません。");
-    process.exit(1); // プログラムを即時終了
+    process.exit(1);
 }
 
 const client = new MongoClient(uri, {
-    connectTimeoutMS: 30000, // 接続タイムアウトを10秒に設定
-    serverSelectionTimeoutMS: 30000, // サーバー選択のタイムアウトも10秒
+    connectTimeoutMS: 5000, // 接続タイムアウトを5秒に短縮
+    serverSelectionTimeoutMS: 5000, // サーバー選択タイムアウトも5秒
 });
 let db;
+let isConnecting = false;
 
-async function connectToMongo() {
-    if (!db) {
-        console.log("MongoDBに接続しようとしています...");
-        console.log("接続先URI:", uri.replace(/\/\/.*@/, "//[認証情報隠し]@")); // 認証情報を隠してログ表示
-        try {
-            await client.connect();
-            db = client.db('contest');
-            console.log("MongoDBに接続できました！");
-        } catch (err) {
-            console.error("MongoDBに接続失敗:", err.message);
-            console.error("エラー詳細:", err.stack);
+// MongoDB接続関数（再試行ロジック付き）
+async function connectToMongo(attempt = 1, maxAttempts = 3, retryDelay = 2000) {
+    if (db) {
+        console.log("既存のMongoDB接続を再利用します。");
+        return db;
+    }
+
+    if (isConnecting) {
+        console.log("接続処理が進行中です。待機します...");
+        while (isConnecting) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return db;
+    }
+
+    isConnecting = true;
+    console.log(`MongoDBに接続を試みます（試行 ${attempt}/${maxAttempts}）...`);
+    console.log("接続先URI:", uri.replace(/\/\/.*@/, "//[認証情報隠し]@"));
+
+    try {
+        await client.connect();
+        db = client.db('contest');
+        console.log("MongoDBに接続できました！");
+        isConnecting = false;
+        return db;
+    } catch (err) {
+        isConnecting = false;
+        console.error(`MongoDB接続失敗（試行 ${attempt}/${maxAttempts}）:`, err.message);
+        if (attempt < maxAttempts) {
+            console.log(`接続に失敗しました。${retryDelay / 1000}秒後に再試行します...`);
+            await new Promise((resolve) => setTimeout(resolve, retryDelay));
+            return connectToMongo(attempt + 1, maxAttempts, retryDelay);
+        } else {
+            console.error("最大試行回数に達しました。接続を諦めます。");
             throw err;
         }
-    } else {
-        console.log("既存のMongoDB接続を再利用します。");
     }
-    return db;
 }
+
+// すべてのリクエストで接続を保証するミドルウェア
+app.use(async (req, res, next) => {
+    try {
+        await connectToMongo();
+        next();
+    } catch (err) {
+        console.error("リクエスト処理中のMongoDB接続エラー:", err);
+        res.status(503).send("データベースに接続できませんでした。後で再試行してください。");
+    }
+});
+
+// サーバー起動時に接続を試みる（削除可能）
+/*
+connectToMongo().catch((err) => {
+    console.error('MongoDB初期接続エラー:', err);
+    process.exit(1);
+});
+*/
 
 // ユーザー情報の読み込み
 const loadUsers = async () => {
