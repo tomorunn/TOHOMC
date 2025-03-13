@@ -18,6 +18,8 @@ app.use(express.static(path.join(__dirname, 'public'))); // ファビコン対�
 app.use(fileUpload({
     useTempFiles: true,
     tempFileDir: '/tmp/',
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB制限
+    abortOnLimit: true, // 制限を超えたら即時中止
 }));
 
 // uploadsディレクトリを作成（存在しない場合）
@@ -1802,7 +1804,11 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     }
 });
 
-// 画像アップロード処理（ローカル保存）
+const { promisify } = require('util');
+const stream = require('stream');
+const pipelineAsync = promisify(stream.pipeline);
+
+// 画像アップロード処理（最適化版）
 app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -1833,12 +1839,29 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
         const fileName = `${contestId}_${problemId}_${Date.now()}_${file.name}`;
         const filePath = path.join(uploadDir, fileName);
 
-        // ファイルをpublic/uploadsに移動
-        await file.mv(filePath);
+        // ファイルサイズ制限（例: 5MB）
+        const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+        if (file.size > MAX_FILE_SIZE) {
+            return res.status(400).send('ファイルサイズが大きすぎます（最大5MB）');
+        }
+
+        // ストリームを使用してファイルを保存
+        const writeStream = require('fs').createWriteStream(filePath);
+        await pipelineAsync(file.data, writeStream);
+
+        // 画像パスを更新
         problem.image = `/uploads/${fileName}`;
         console.log('画像アップロード成功:', problem.image);
 
-        await saveContests(contests);
+        // 特定のドキュメントのみを更新（効率化）
+        const database = await connectToMongo();
+        const collection = database.collection('contests');
+        await collection.updateOne(
+            { _id: contest._id }, // MongoDBの_idを使用（必要に応じて調整）
+            { $set: { [`problems.$[elem].image`]: problem.image } },
+            { arrayFilters: [{ 'elem.id': problemId }] }
+        );
+
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
     } catch (err) {
         console.error('画像アップロード処理エラー:', err);
