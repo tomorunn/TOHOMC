@@ -25,21 +25,34 @@ const uploadDir = path.join(__dirname, 'public', 'uploads');
 fs.mkdir(uploadDir, { recursive: true }).catch(err => console.error('アップロードディレクトリ作成エラー:', err));
 
 // MongoDB 接続設定
+// MongoDB 接続設定
 const uri = process.env.MONGO_URI;
-const client = new MongoClient(uri);
+if (!uri) {
+    console.error("エラー: MONGO_URIが環境変数に設定されていません。");
+    process.exit(1); // プログラムを即時終了
+}
+
+const client = new MongoClient(uri, {
+    connectTimeoutMS: 30000, // 接続タイムアウトを10秒に設定
+    serverSelectionTimeoutMS: 30000, // サーバー選択のタイムアウトも10秒
+});
 let db;
 
 async function connectToMongo() {
     if (!db) {
         console.log("MongoDBに接続しようとしています...");
+        console.log("接続先URI:", uri.replace(/\/\/.*@/, "//[認証情報隠し]@")); // 認証情報を隠してログ表示
         try {
             await client.connect();
             db = client.db('contest');
             console.log("MongoDBに接続できました！");
         } catch (err) {
-            console.error("MongoDBに接続失敗:", err);
+            console.error("MongoDBに接続失敗:", err.message);
+            console.error("エラー詳細:", err.stack);
             throw err;
         }
+    } else {
+        console.log("既存のMongoDB接続を再利用します。");
     }
     return db;
 }
