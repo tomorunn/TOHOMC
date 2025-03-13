@@ -3,75 +3,30 @@ const { DateTime } = require('luxon');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const { MongoClient } = require('mongodb');
+const formidable = require('formidable');
+const cloudinary = require('cloudinary').v2;
+const fileUpload = require('express-fileupload');
 
 const app = express();
 
 require('dotenv').config();
-const cloudinary = require('cloudinary').v2;
-const fileUpload = require('express-fileupload');
 
 // Cloudinaryの設定
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
-    try {
-      const user = await getUserFromCookie(req);
-      if (!user || !user.isAdmin) return res.redirect('/login');
-  
-      const contestId = parseInt(req.params.contestId);
-      const problemId = req.params.problemId;
-      const contests = await loadContests();
-  
-      if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-        return res.status(404).send('無効なコンテストIDです');
-      }
-  
-      const contest = contests[contestId];
-      const problemIndex = contest.problems.findIndex(p => p.id === problemId);
-  
-      if (problemIndex === -1) {
-        return res.status(404).send('問題が見つかりません');
-      }
-  
-      // ファイルがアップロードされたか確認
-      if (!req.files || !req.files.image) {
-        return res.status(400).send('画像ファイルが選択されていません');
-      }
-  
-      const imageFile = req.files.image;
-  
-      // Cloudinaryに画像をアップロード
-      const uploadResult = await cloudinary.uploader.upload(imageFile.tempFilePath, {
-        upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
-        folder: `contests/${contestId}/problems/${problemId}`, // フォルダ構造で整理
-      });
-  
-      // 問題のimageフィールドを更新
-      contest.problems[problemIndex].image = uploadResult.secure_url;
-  
-      await saveContests(contests);
-  
-      res.redirect(`/admin/problem/${contestId}/${problemId}`);
-    } catch (err) {
-      console.error('画像アップロードエラー:', err);
-      res.status(500).send('サーバーエラーが発生しました: ' + err.message);
-    }
-  });
-
+// ミドルウェアの設定（順序が重要）
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'public'))); // ファビコン対応
 app.use(fileUpload({
     useTempFiles: true,
     tempFileDir: '/tmp/',
-  }));
-
-// ミドルウェアの設定
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(cookieParser());
-app.use(express.json()); // JSONデータを扱えるようにする
+}));
 
 // MongoDB 接続設定
 const uri = process.env.MONGO_URI;
@@ -280,19 +235,31 @@ const generatePage = (nav, content, includeFooter = true) => `
     </html>
 `;
 
-// ユーザー取得関数
+// ユーザー取得関数（修正：エラー防止とデバッグ強化）
 const getUserFromCookie = async (req) => {
-    const username = req.cookies.username;
-    if (!username) return null;
-    const users = await loadUsers();
-    const user = users.find((u) => u.username === username) || null;
-    console.log('Cookie username:', username, 'Found user:', user);
-    return user;
+    try {
+        const username = req.cookies.username;
+        console.log('Cookie username:', username); // デバッグ用
+        if (!username) {
+            console.log('クッキーにusernameが見つかりません');
+            return null;
+        }
+        const users = await loadUsers();
+        const user = users.find((u) => u.username === username) || null;
+        console.log('Found user:', user); // デバッグ用
+        return user;
+    } catch (err) {
+        console.error('getUserFromCookieエラー:', err);
+        return null;
+    }
 };
 
-// コンテスト管理権限のチェック関数
+// コンテスト管理権限のチェック関数（修正：安全性向上）
 const canManageContest = (user, contest) => {
-    if (!user) return false;
+    if (!user || !user.username) {
+        console.log('ユーザー情報が不正（canManageContest）:', user);
+        return false;
+    }
     if (user.isAdmin) return true;
     const isManager = contest.managers && contest.managers.includes(user.username);
     const isWriter = contest.writers && contest.writers.includes(user.username);
@@ -302,26 +269,26 @@ const canManageContest = (user, contest) => {
 
 // コンテストが終了していないかをチェックする関数
 const isContestNotEnded = (contest) => {
-    const now = DateTime.now().setZone('Asia/Tokyo'); // JST
+    const now = DateTime.now().setZone('Asia/Tokyo');
     const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' });
-    console.log("現在時刻(JST):", now.toISO(), "終了時刻(JST):", end.toISO()); // デバッグ用
+    console.log("現在時刻(JST):", now.toISO(), "終了時刻(JST):", end.toISO());
     return now < end;
 };
 
 // コンテストが開始済みかをチェックする関数
 const hasContestStarted = (contest) => {
-    const now = DateTime.now().setZone('Asia/Tokyo'); // JST
+    const now = DateTime.now().setZone('Asia/Tokyo');
     const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' });
-    console.log("現在時刻(JST):", now.toISO(), "開始時刻(JST):", start.toISO()); // デバッグ用
+    console.log("現在時刻(JST):", now.toISO(), "開始時刻(JST):", start.toISO());
     return now >= start;
 };
 
 // コンテストが開催中かをチェックする関数
 const isContestStartedOrActive = (contest) => {
-    const now = DateTime.now().setZone('Asia/Tokyo'); // JST
+    const now = DateTime.now().setZone('Asia/Tokyo');
     const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' });
     const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' });
-    console.log("現在時刻(JST):", now.toISO(), "開始時刻(JST):", start.toISO(), "終了時刻(JST):", end.toISO()); // デバッグ用
+    console.log("現在時刻(JST):", now.toISO(), "開始時刻(JST):", start.toISO(), "終了時刻(JST):", end.toISO());
     return now >= start && now <= end;
 };
 
@@ -446,7 +413,7 @@ app.get('/admin', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         console.log('Accessing /admin, user:', user);
-        if (!user) {
+        if (!user || !user.username) {
             console.log('No user found, redirecting to /login');
             return res.redirect('/login');
         }
@@ -502,7 +469,7 @@ app.get('/admin', async (req, res) => {
 app.get('/admin/add-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
         const nav = generateNav(user);
         const content = `
             <section class="form-container">
@@ -533,13 +500,12 @@ app.get('/admin/add-contest', async (req, res) => {
 app.post('/admin/add-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
         const { title, description, startTime, endTime, problemCount } = req.body;
         const contests = await loadContests();
         const numProblems = parseInt(problemCount);
         const problemIds = generateProblemIds(numProblems);
 
-        // JSTで時間を設定
         const jstStartTime = DateTime.fromISO(startTime, { zone: 'Asia/Tokyo' }).toISO();
         const jstEndTime = DateTime.fromISO(endTime, { zone: 'Asia/Tokyo' }).toISO();
 
@@ -577,7 +543,7 @@ app.post('/admin/add-contest', async (req, res) => {
 app.post('/admin/delete-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
         const { index } = req.body;
         const contests = await loadContests();
         const idx = parseInt(index);
@@ -654,7 +620,7 @@ app.get('/contests', async (req, res) => {
 app.get('/contest/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -803,7 +769,7 @@ app.get('/contest/:contestId', async (req, res) => {
 app.get('/contest/:contestId/review', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -843,7 +809,7 @@ app.get('/contest/:contestId/review', async (req, res) => {
 app.get('/contest/:contestId/submissions', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -910,7 +876,7 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
 app.get('/contest/:contestId/ranking', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -921,7 +887,6 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         const contest = contests[contestId];
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
 
-        // submissionsが未定義の場合に空配列を設定
         const submissionsDuringContest = (contest.submissions || []).filter(
             (sub) => new Date(sub.date).getTime() <= endTime,
         );
@@ -946,7 +911,6 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
 
         const problemIds = generateProblemIds(contest.problemCount);
         const problemScores = {};
-        // problemsが未定義の場合に空配列を設定
         (contest.problems || []).forEach((problem) => {
             problemScores[problem.id] = problem.score || 100;
         });
@@ -1110,7 +1074,6 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                         return;
                     }
 
-                    // First FAの表示
                     const firstFA = ${JSON.stringify(firstFA)};
                     const startTime = ${startTime};
                     document.querySelectorAll('.first-fa').forEach(cell => {
@@ -1123,7 +1086,6 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                         }
                     });
 
-                    // 各行のLast CA Timeと問題ごとの時間をフォーマット
                     document.querySelectorAll('.ranking-row').forEach(row => {
                         const lastCaCell = row.querySelector('.last-ca-time');
                         const lastCaTime = parseInt(lastCaCell.getAttribute('data-time'));
@@ -1148,7 +1110,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
 app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1258,7 +1220,7 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
 app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1310,7 +1272,7 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
 app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1400,11 +1362,11 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
 
 // ルート：過去の問題
 app.get('/problems', async (req, res) => {
-    console.log('リクエスト受信: /problems'); // ログ追加
+    console.log('リクエスト受信: /problems');
     try {
         const user = await getUserFromCookie(req);
         console.log('ユーザー:', user ? user.username : 'なし');
-        if (!user) {
+        if (!user || !user.username) {
             console.log('ログインしていないのでリダイレクト');
             return res.redirect('/login');
         }
@@ -1412,8 +1374,6 @@ app.get('/problems', async (req, res) => {
         console.log('コンテスト数:', contests.length);
         const nav = generateNav(user);
         const endedContests = contests.filter((contest) => !isContestNotEnded(contest));
-        // 以下略
-        // 以下略
 
         const content = `
             <section class="hero">
@@ -1485,7 +1445,7 @@ app.get('/problems', async (req, res) => {
 app.get('/admin/contest-details/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1564,7 +1524,7 @@ app.get('/admin/contest-details/:contestId', async (req, res) => {
 app.post('/admin/contest-details/:contestId/update-review', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1591,7 +1551,7 @@ app.post('/admin/contest-details/:contestId/update-review', async (req, res) => 
 app.post('/admin/contest-details/:contestId/add-writer-tester', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1635,7 +1595,7 @@ app.post('/admin/contest-details/:contestId/add-writer-tester', async (req, res)
 app.get('/admin/edit-contest/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1689,8 +1649,6 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                                     <input type="text" name="correctAnswer_${problemId}" value="${
                                         problem.correctAnswer || ''
                                     }" placeholder="正解を入力 (例: 42, x=5)"><br>
-                                    <!-- 画像アップロードは未実装 -->
-                                    <p style="color: red;">画像アップロードは現在サポートされていません。外部ストレージサービス（例: Cloudinary）を使用してURLを保存してください。</p>
                                     <label>画像URL (手動入力):</label><br>
                                     <input type="text" name="image_${problemId}" value="${
                                         problem.image || ''
@@ -1714,7 +1672,7 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
 app.post('/admin/edit-contest/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1766,75 +1724,11 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
     }
 });
 
-const formidable = require('formidable');
-
-app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
-    const form = new formidable.IncomingForm();
-    form.parse(req, async (err, fields, files) => {
-        if (err) {
-            console.error('フォーム解析エラー:', err);
-            return res.status(500).send('フォーム解析エラーが発生しました');
-        }
-
-        try {
-            const user = await getUserFromCookie(req);
-            if (!user || !user.username) {
-                console.error('ユーザー情報が不正:', user);
-                return res.redirect('/login');
-            }
-
-            const contests = await loadContests();
-            const contestId = parseInt(req.params.contestId);
-            const problemId = req.params.problemId;
-
-            if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-                return res.status(404).send('無効なコンテストIDです');
-            }
-
-            const contest = contests[contestId];
-            if (!canManageContest(user, contest)) {
-                return res
-                    .status(403)
-                    .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
-            }
-
-            const imageFile = files.image;
-            if (!imageFile) {
-                return res.status(400).send('画像ファイルが選択されていません');
-            }
-
-            if (!imageFile.mimetype.startsWith('image/')) {
-                return res.status(400).send('画像ファイルのみアップロード可能です');
-            }
-
-            const uploadResult = await cloudinary.uploader.upload(imageFile.filepath, {
-                upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
-                folder: `contests/${contestId}/problems/${problemId}`,
-                transformation: { width: 800, crop: "scale" },
-            });
-
-            const problem = contest.problems.find((p) => p.id === problemId);
-            if (problem) {
-                problem.image = uploadResult.secure_url;
-            }
-
-            res.redirect(`/admin/problem/${contestId}/${problemId}`);
-        } catch (err) {
-            console.error('画像アップロードエラー:', err);
-            res.status(500).send('サーバーエラーが発生しました');
-        }
-    });
-});
-
-// ミドルウェアの設定
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-
-// 管理者向けの問題詳細ページ（変更なし）
+// ルート：問題詳細（管理者）
 app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login'); // usernameのチェックを追加
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1911,88 +1805,53 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     }
 });
 
-// 画像アップロード用のエンドポイント
-app.post('/admin/problem/:contestId/:problemId/upload', (req, res) => {
-    const form = new formidable.IncomingForm();
-    form.parse(req, async (err, fields, files) => {
-        if (err) {
-            console.error('フォーム解析エラー:', err);
-            return res.status(500).send('フォーム解析エラーが発生しました');
-        }
-
-        try {
-            console.log('リクエストヘッダー:', req.headers); // クッキー確認用
-            const user = await getUserFromCookie(req);
-            console.log('getUserFromCookieの結果:', user); // ユーザーオブジェクトの中身を確認
-
-            // userがnull/undefinedまたはusernameがない場合
-            if (!user || !user.username) {
-                console.error('ユーザー認証エラー: user=', user);
-                return res.redirect('/login');
-            }
-
-            const contests = await loadContests();
-            console.log('コンテストデータ:', contests); // コンテストデータの確認
-            const contestId = parseInt(req.params.contestId);
-            const problemId = req.params.problemId;
-
-            if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-                console.error('無効なコンテストID:', contestId);
-                return res.status(404).send('無効なコンテストIDです');
-            }
-
-            const contest = contests[contestId];
-            console.log('選択されたコンテスト:', contest);
-
-            const canManage = canManageContest(user, contest);
-            console.log('canManageContestの結果:', canManage); // 権限チェックの結果
-            if (!canManage) {
-                console.error('権限不足: user=', user, 'contest=', contest);
-                return res
-                    .status(403)
-                    .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
-            }
-
-            const imageFile = files.image;
-            if (!imageFile) {
-                console.error('画像ファイルが見つかりません:', files);
-                return res.status(400).send('画像ファイルが選択されていません');
-            }
-
-            if (!imageFile.mimetype.startsWith('image/')) {
-                console.error('無効なMIMEタイプ:', imageFile.mimetype);
-                return res.status(400).send('画像ファイルのみアップロード可能です');
-            }
-
-            console.log('アップロード開始:', imageFile.filepath);
-            const uploadResult = await cloudinary.uploader.upload(imageFile.filepath, {
-                upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
-                folder: `contests/${contestId}/problems/${problemId}`,
-                transformation: { width: 800, crop: "scale" },
-            });
-            console.log('アップロード成功:', uploadResult.secure_url);
-
-            const problem = contest.problems.find((p) => p.id === problemId);
-            if (problem) {
-                problem.image = uploadResult.secure_url;
-                console.log('問題データ更新:', problem);
-                // コンテストデータを永続化する処理が必要ならここで
-                // await saveContests(contests);
-            }
-
-            res.redirect(`/admin/problem/${contestId}/${problemId}`);
-        } catch (err) {
-            console.error('画像アップロードエラー:', err);
-            res.status(500).send('サーバーエラーが発生しました');
-        }
-    });
-});
-
-
 app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login');
+        const contests = await loadContests();
+        const contestId = parseInt(req.params.contestId);
+        const problemId = req.params.problemId;
+
+        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+            return res.status(404).send('無効なコンテストIDです');
+        }
+        const contest = contests[contestId];
+        if (!canManageContest(user, contest)) {
+            return res
+                .status(403)
+                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+        }
+
+        const problemIndex = contest.problems.findIndex((p) => p.id === problemId);
+        if (problemIndex === -1) {
+            return res.status(404).send('無効な問題IDです');
+        }
+
+        const { content, score, writer, correctAnswer, image, explanation } = req.body;
+        contest.problems[problemIndex] = {
+            id: problemId,
+            content: content || '',
+            score: parseInt(score) || 100,
+            writer: writer || '未設定',
+            correctAnswer: correctAnswer || '',
+            image: image || '',
+            explanation: explanation || '',
+        };
+
+        await saveContests(contests);
+        res.redirect(`/admin/problem/${contestId}/${problemId}`);
+    } catch (err) {
+        console.error('問題更新エラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+// ルート：問題画像アップロード
+app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user || !user.username) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -2008,38 +1867,42 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
                 .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
         }
 
-        const problemIndex = contest.problems.findIndex((p) => p.id === problemId);
-        const { content, score, writer, correctAnswer, explanation, image } = req.body;
-
-        const updatedProblem = {
-            id: problemId,
-            content: content || '',
-            score: parseInt(score) || 100,
-            writer: writer || '未設定',
-            correctAnswer: correctAnswer || '',
-            image: image || '',
-            explanation: explanation || '',
-        };
-    
-        if (problemIndex !== -1) {
-            contest.problems[problemIndex] = updatedProblem;
-        } else {
-            contest.problems.push(updatedProblem);
+        const problem = contest.problems.find((p) => p.id === problemId);
+        if (!problem) {
+            return res.status(404).send('無効な問題IDです');
         }
-    
+
+        if (!req.files || !req.files.image) {
+            return res
+                .status(400)
+                .send('画像がアップロードされていません <a href="/admin/problem/' + contestId + '/' + problemId + '">戻る</a>');
+        }
+
+        const file = req.files.image;
+        const uploadResult = await new Promise((resolve, reject) => {
+            cloudinary.uploader.upload_stream(
+                { resource_type: 'image' },
+                (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                }
+            ).end(file.data);
+        });
+
+        problem.image = uploadResult.secure_url;
         await saveContests(contests);
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
     } catch (err) {
-        console.error('問題詳細（管理者）更新エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました: " + err.message);
+        console.error('画像アップロードエラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
     }
-    });
-    
-    // ルート：ユーザー管理（管理者）
-    app.get('/admin/users', async (req, res) => {
+});
+
+// ルート：ユーザー管理
+app.get('/admin/users', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
         const users = await loadUsers();
         const nav = generateNav(user);
         const content = `
@@ -2047,91 +1910,92 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
                 <h2>ユーザー管理</h2>
                 <table class="user-table">
                     <tr><th>ユーザー名</th><th>管理者</th><th>操作</th></tr>
-                    ${
-                        users
-                            .map((u, index) => `
-                                <tr>
-                                    <td>${u.username}</td>
-                                    <td>${u.isAdmin ? 'はい' : 'いいえ'}</td>
-                                    <td>
-                                        <form action="/admin/toggle-admin" method="POST" style="display:inline;">
-                                            <input type="hidden" name="index" value="${index}">
-                                            <button type="submit">${
-                                                u.isAdmin ? '管理者権限を剥奪' : '管理者権限を付与'
-                                            }</button>
-                                        </form>
-                                        <form action="/admin/delete-user" method="POST" style="display:inline;">
-                                            <input type="hidden" name="index" value="${index}">
-                                            <button type="submit">削除</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            `)
-                            .join('') || '<tr><td colspan="3">ユーザーがいません</td></tr>'
-                    }
+                    ${users
+                        .map((u, index) => `
+                            <tr>
+                                <td>${u.username}</td>
+                                <td>${u.isAdmin ? 'はい' : 'いいえ'}</td>
+                                <td>
+                                    <form action="/admin/toggle-admin" method="POST" style="display:inline;">
+                                        <input type="hidden" name="index" value="${index}">
+                                        <button type="submit">${u.isAdmin ? '管理者権限を剥奪' : '管理者にする'}</button>
+                                    </form>
+                                    <form action="/admin/delete-user" method="POST" style="display:inline;">
+                                        <input type="hidden" name="index" value="${index}">
+                                        <button type="submit">削除</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        `).join('')}
                 </table>
                 <p><a href="/admin">管理者ダッシュボードに戻る</a></p>
             </section>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
-        console.error('ユーザー管理表示エラー:', err);
+        console.error('ユーザー管理エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
-    });
-    
-    app.post('/admin/toggle-admin', async (req, res) => {
+});
+
+// ルート：管理者権限の切り替え
+app.post('/admin/toggle-admin', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
-        const { index } = req.body;
+        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
         const users = await loadUsers();
-        const idx = parseInt(index);
-        if (idx >= 0 && idx < users.length) {
-            if (users[idx].username === user.username) {
-                return res.send('自分自身の管理者権限を変更することはできません <a href="/admin/users">戻る</a>');
-            }
-            users[idx].isAdmin = !users[idx].isAdmin;
-            await saveUsers(users);
+        const index = parseInt(req.body.index);
+
+        if (isNaN(index) || index < 0 || index >= users.length) {
+            return res.status(404).send('無効なユーザーインデックスです');
         }
+
+        if (users[index].username === user.username) {
+            return res.status(403).send('自分自身の管理者権限は変更できません <a href="/admin/users">戻る</a>');
+        }
+
+        users[index].isAdmin = !users[index].isAdmin;
+        await saveUsers(users);
         res.redirect('/admin/users');
     } catch (err) {
-        console.error('管理者権限変更エラー:', err);
+        console.error('管理者権限切り替えエラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
-    });
-    
-    app.post('/admin/delete-user', async (req, res) => {
+});
+
+// ルート：ユーザー削除
+app.post('/admin/delete-user', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
-        const { index } = req.body;
+        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
         const users = await loadUsers();
-        const idx = parseInt(index);
-        if (idx >= 0 && idx < users.length) {
-            if (users[idx].username === user.username) {
-                return res.send('自分自身を削除することはできません <a href="/admin/users">戻る</a>');
-            }
-            users.splice(idx, 1);
-            await saveUsers(users);
+        const index = parseInt(req.body.index);
+
+        if (isNaN(index) || index < 0 || index >= users.length) {
+            return res.status(404).send('無効なユーザーインデックスです');
         }
+
+        if (users[index].username === user.username) {
+            return res.status(403).send('自分自身を削除することはできません <a href="/admin/users">戻る</a>');
+        }
+
+        users.splice(index, 1);
+        await saveUsers(users);
         res.redirect('/admin/users');
     } catch (err) {
         console.error('ユーザー削除エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
-    });
-    
-    // 404エラーハンドリング
-    app.use((req, res) => {
-    console.warn(`404 Not Found: ${req.method} ${req.url}`);
-    res.status(404).send('ページが見つかりません <a href="/">ホームに戻る</a>');
-    });
-    
-// MongoDB接続を初回リクエスト時に実行
-connectToMongo().catch((err) => {
-    console.error('初期MongoDB接続エラー:', err);
 });
 
-// Vercel用にアプリをエクスポート
-module.exports = app;
+// サーバー起動
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, async () => {
+    console.log(`サーバーがポート${PORT}で起動しました`);
+    try {
+        await connectToMongo();
+        console.log('MongoDBに接続済み');
+    } catch (err) {
+        console.error('MongoDB接続に失敗しました:', err);
+    }
+});
