@@ -1767,6 +1767,15 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
 });
 
 // ルート：問題詳細（管理者）
+const express = require('express');
+const app = express();
+const cloudinary = require('cloudinary').v2;
+
+// ミドルウェアの設定（必要に応じて）
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+// 管理者向けの問題詳細ページ
 app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -1843,19 +1852,64 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('問題詳細（管理者）エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました");
+        res.status(500).send('サーバーエラーが発生しました');
     }
 });
 
-if (!imageFile.mimetype.startsWith('image/')) {
-    return res.status(400).send('画像ファイルのみアップロード可能です');
-  }
+// 画像アップロード用のエンドポイント
+app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user) return res.redirect('/login');
 
-  const uploadResult = await cloudinary.uploader.upload(imageFile.tempFilePath, {
-    upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
-    folder: `contests/${contestId}/problems/${problemId}`,
-    transformation: { width: 800, crop: "scale" },
-  });
+        const contests = await loadContests();
+        const contestId = parseInt(req.params.contestId);
+        const problemId = req.params.problemId;
+
+        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+            return res.status(404).send('無効なコンテストIDです');
+        }
+
+        const contest = contests[contestId];
+        if (!canManageContest(user, contest)) {
+            return res
+                .status(403)
+                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+        }
+
+        // ファイルがアップロードされているか確認
+        const imageFile = req.files && req.files.image;
+        if (!imageFile) {
+            return res.status(400).send('画像ファイルが選択されていません');
+        }
+
+        // 画像ファイルのMIMEタイプをチェック
+        if (!imageFile.mimetype.startsWith('image/')) {
+            return res.status(400).send('画像ファイルのみアップロード可能です');
+        }
+
+        // Cloudinaryにアップロード
+        const uploadResult = await cloudinary.uploader.upload(imageFile.tempFilePath, {
+            upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
+            folder: `contests/${contestId}/problems/${problemId}`,
+            transformation: { width: 800, crop: "scale" },
+        });
+
+        // アップロード成功後、問題データを更新（必要に応じて）
+        const problem = contest.problems.find((p) => p.id === problemId);
+        if (problem) {
+            problem.image = uploadResult.secure_url; // アップロードされた画像のURLを保存
+            // コンテストデータを永続化する処理が必要ならここで保存
+            // 例: await saveContests(contests);
+        }
+
+        // アップロード成功後にリダイレクト
+        res.redirect(`/admin/problem/${contestId}/${problemId}`);
+    } catch (err) {
+        console.error('画像アップロードエラー:', err);
+        res.status(500).send('画像アップロード中にエラーが発生しました');
+    }
+});
 
 app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
