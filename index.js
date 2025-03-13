@@ -1704,14 +1704,14 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
             return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
-        const problem =
-            contest.problems.find((p) => p.id === problemId) || {
-                content: '問題が設定されていません',
-                score: 100,
-                writer: '未設定',
-                image: '',
-                explanation: '',
-            };
+        const problem = contest.problems.find((p) => p.id === problemId) || {
+            content: '問題が設定されていません',
+            score: 100,
+            writer: '未設定',
+            image: '',
+            explanation: '',
+            explanationImage: '',
+        };
 
         let displayContent = problem.content || '未設定';
         displayContent = displayContent.replace(/\n(?![ \t]*\$)/g, '<br>');
@@ -1730,12 +1730,9 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                     <p>点数: ${problem.score}</p>
                     <p>作成者: ${problem.writer || '未設定'}</p>
                     <p>正解: ${problem.correctAnswer || '未設定'}</p>
-                    ${
-                        problem.image
-                            ? `<p>画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>`
-                            : '<p>画像: 未設定</p>'
-                    }
+                    ${problem.image ? `<p>問題画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>` : '<p>問題画像: 未設定</p>'}
                     <p>解説: <span class="math-tex">${displayExplanation}</span></p>
+                    ${problem.explanationImage ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px;"></p>` : '<p>解説画像: 未設定</p>'}
                 </div>
                 <h3>問題内容の編集</h3>
                 <form method="POST" action="/admin/problem/${contestId}/${problemId}">
@@ -1753,8 +1750,10 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                 </form>
                 <h3>画像アップロード</h3>
                 <form method="POST" action="/admin/problem/${contestId}/${problemId}/upload-image" enctype="multipart/form-data">
-                    <label>画像を選択:</label><br>
-                    <input type="file" name="image" accept="image/*" required><br>
+                    <label>問題画像を選択:</label><br>
+                    <input type="file" name="image" accept="image/*"><br>
+                    <label>解説画像を選択:</label><br>
+                    <input type="file" name="explanationImage" accept="image/*"><br>
                     <button type="submit">画像をアップロード</button>
                 </form>
                 <p><a href="/admin/contest-details/${contestId}">コンテスト詳細に戻る</a></p>
@@ -1785,24 +1784,27 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
             return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
-        const problem = contest.problems.find((p) => p.id === problemId);
+        let problem = contest.problems.find((p) => p.id === problemId);
         if (!problem) {
-            return res.status(404).send('無効な問題IDです');
+            problem = { id: problemId, image: '', explanationImage: '' };
+            contest.problems.push(problem);
         }
 
-        problem.content = req.body.content || problem.content || '';
-        problem.score = parseInt(req.body.score) || problem.score || 100;
-        problem.writer = req.body.writer || problem.writer || '';
-        problem.correctAnswer = req.body.correctAnswer || problem.correctAnswer || '';
-        problem.explanation = req.body.explanation || problem.explanation || '';
+        problem.content = req.body.content || '';
+        problem.score = parseInt(req.body.score) || 100;
+        problem.writer = req.body.writer || '';
+        problem.correctAnswer = req.body.correctAnswer || '';
+        problem.explanation = req.body.explanation || '';
+        // image と explanationImage はこのルートでは更新しない（アップロード専用ルートで処理）
 
         await saveContests(contests);
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
     } catch (err) {
-        console.error('問題更新処理エラー:', err);
+        console.error('問題編集エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
+
 
 const { promisify } = require('util');
 const stream = require('stream');
@@ -1831,34 +1833,49 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
             return res.status(404).send('無効な問題IDです');
         }
 
-        if (!req.files || !req.files.image) {
-            return res.status(400).send('画像ファイルが選択されていません');
+        if (!req.files || (!req.files.image && !req.files.explanationImage)) {
+            return res.status(400).send('少なくとも1つの画像ファイルを選択してください');
         }
 
-        const file = req.files.image;
-        const fileName = `${contestId}_${problemId}_${Date.now()}_${file.name}`;
-        const filePath = path.join(uploadDir, fileName);
-
-        // ファイルサイズ制限（例: 5MB）
         const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-        if (file.size > MAX_FILE_SIZE) {
-            return res.status(400).send('ファイルサイズが大きすぎます（最大5MB）');
+
+        // 問題画像の処理
+        if (req.files && req.files.image) {
+            const imageFile = req.files.image;
+            if (imageFile.size > MAX_FILE_SIZE) {
+                return res.status(400).send('問題画像のサイズが大きすぎます（最大5MB）');
+            }
+            const imageFileName = `${contestId}_${problemId}_image_${Date.now()}_${imageFile.name}`;
+            const imageFilePath = path.join(uploadDir, imageFileName);
+            await pipelineAsync(imageFile.data, require('fs').createWriteStream(imageFilePath));
+            problem.image = `/uploads/${imageFileName}`;
+            console.log('問題画像アップロード成功:', problem.image);
         }
 
-        // ストリームを使用してファイルを保存
-        const writeStream = require('fs').createWriteStream(filePath);
-        await pipelineAsync(file.data, writeStream);
+        // 解説画像の処理
+        if (req.files && req.files.explanationImage) {
+            const explanationImageFile = req.files.explanationImage;
+            if (explanationImageFile.size > MAX_FILE_SIZE) {
+                return res.status(400).send('解説画像のサイズが大きすぎます（最大5MB）');
+            }
+            const explanationFileName = `${contestId}_${problemId}_explanation_${Date.now()}_${explanationImageFile.name}`;
+            const explanationFilePath = path.join(uploadDir, explanationFileName);
+            await pipelineAsync(explanationImageFile.data, require('fs').createWriteStream(explanationFilePath));
+            problem.explanationImage = `/uploads/${explanationFileName}`;
+            console.log('解説画像アップロード成功:', problem.explanationImage);
+        }
 
-        // 画像パスを更新
-        problem.image = `/uploads/${fileName}`;
-        console.log('画像アップロード成功:', problem.image);
-
-        // 特定のドキュメントのみを更新（効率化）
+        // MongoDBの特定ドキュメントを更新
         const database = await connectToMongo();
         const collection = database.collection('contests');
         await collection.updateOne(
-            { _id: contest._id }, // MongoDBの_idを使用（必要に応じて調整）
-            { $set: { [`problems.$[elem].image`]: problem.image } },
+            { _id: contest._id },
+            {
+                $set: {
+                    [`problems.$[elem].image`]: problem.image,
+                    [`problems.$[elem].explanationImage`]: problem.explanationImage,
+                },
+            },
             { arrayFilters: [{ 'elem.id': problemId }] }
         );
 
