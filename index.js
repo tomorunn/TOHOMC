@@ -163,17 +163,6 @@ const wrapWithFlalign = (content) => {
     const displayMathPattern = /\$\$(.*?)\$\$|\[(.*?)\]/gs;
     return content.replace(displayMathPattern, (match, p1, p2) => {
         let innerContent = p1 || p2 || '';
-        const MAX_LINE_LENGTH = 50;
-        let formattedContent = '';
-        let currentLine = '';
-        innerContent.split(' ').forEach((token) => {
-            if (currentLine.length + token.length > MAX_LINE_LENGTH) {
-                formattedContent += currentLine + '\\\\\n';
-                currentLine = token + ' ';
-            } else {
-                currentLine += token + ' ';
-            }
-        });
         formattedContent += currentLine.trim();
         return `$$\\begin{flalign}${formattedContent}\\end{flalign}$$`;
     });
