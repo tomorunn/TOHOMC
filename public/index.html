@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOHO Math Contest</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        .hero {
+            text-align: center;
+            padding: 50px 20px;
+            background-color: #f5f5f5;
+        }
+        .hero h2 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .hero p {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            color: #666;
+        }
+        .hero button {
+            padding: 10px 20px;
+            font-size: 1.1em;
+            background-color: #008888;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .hero button:hover {
+            background-color: #008888;
+        }
+        footer {
+            text-align: center;
+            padding: 20px;
+            background-color: #333;
+            color: white;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="nav-container">
+            <h1>TOHOMC</h1>
+            <ul>
+                <li><a href="/">ホーム</a></li>
+                <li><a href="/contests">コンテスト</a></li>
+                <li><a href="/problems">PROBLEMS</a></li>
+                <li><a href="/login">ログイン</a></li>
+                <li><a href="/register">新規登録</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main>
+        <section class="hero">
+            <h2>TOHO Math Contestへようこそ！</h2>
+            <p>TOHO Math Contestは、Online Math Contestのパロディサイトです。</p>
+            <button onclick="window.location.href='/contests'">今すぐ参加</button>
+        </section>
+    </main>
+
+    <footer>
+        <p>© 2025 TOHOMC. All rights reserved.</p>
+    </footer>
+
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                packages: {'[+]': ['noerrors', 'noundefined', 'align', 'flalign']},
+                displayAlign: 'left'
+            },
+            loader: {load: ['[tex]/noerrors', '[tex]/noundefined', '[tex]/align', '[tex]/flalign']},
+            startup: {
+                ready: () => {
+                    MathJax.startup.defaultReady();
+                    MathJax.startup.promise.then(() => {
+                        console.log('MathJax is loaded and initialized');
+                        MathJax.typesetPromise();
+                    });
+                }
+            }
+        };
+    </script>
+</body>
+</html>
