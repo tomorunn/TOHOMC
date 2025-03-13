@@ -3,20 +3,12 @@ const { DateTime } = require('luxon');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const { MongoClient } = require('mongodb');
-const formidable = require('formidable');
-const cloudinary = require('cloudinary').v2;
 const fileUpload = require('express-fileupload');
+const fs = require('fs').promises; // ファイルシステムモジュール
 
 const app = express();
 
 require('dotenv').config();
-
-// Cloudinaryの設定
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 // ミドルウェアの設定（順序が重要）
 app.use(express.urlencoded({ extended: true }));
@@ -27,6 +19,10 @@ app.use(fileUpload({
     useTempFiles: true,
     tempFileDir: '/tmp/',
 }));
+
+// uploadsディレクトリを作成（存在しない場合）
+const uploadDir = path.join(__dirname, 'public', 'uploads');
+fs.mkdir(uploadDir, { recursive: true }).catch(err => console.error('アップロードディレクトリ作成エラー:', err));
 
 // MongoDB 接続設定
 const uri = process.env.MONGO_URI;
@@ -215,6 +211,11 @@ const generatePage = (nav, content, includeFooter = true) => `
                     }
                 }
             };
+            function confirmDeletion(formId) {
+                if (confirm('本当に削除しますか？')) {
+                    document.getElementById(formId).submit();
+                }
+            }
         </script>
     </head>
     <body>
@@ -410,9 +411,9 @@ app.get('/admin', async (req, res) => {
                                 return `
                                     <li>
                                         ${contest.title} (開始: ${start}, 終了: ${end})
-                                        <form action="/admin/delete-contest" method="POST" style="display:inline;">
+                                        <form id="delete-form-${index}" action="/admin/delete-contest" method="POST" style="display:inline;">
                                             <input type="hidden" name="index" value="${index}">
-                                            <button type="submit">削除</button>
+                                            <button type="button" onclick="confirmDeletion('delete-form-${index}')">削除</button>
                                         </form>
                                         <a href="/admin/contest-details/${index}">詳細</a>
                                         <a href="/admin/edit-contest/${index}">編集</a>
@@ -1748,7 +1749,7 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     }
 });
 
-// 画像アップロード処理
+// 画像アップロード処理（ローカル保存）
 app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -1776,19 +1777,13 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
         }
 
         const file = req.files.image;
-        console.log('アップロードされたファイル:', file); // デバッグ用ログ
+        const fileName = `${contestId}_${problemId}_${Date.now()}_${file.name}`;
+        const filePath = path.join(uploadDir, fileName);
 
-        try {
-            const result = await cloudinary.uploader.upload(file.tempFilePath, {
-                folder: 'contest_problems',
-                public_id: `${contestId}_${problemId}_${Date.now()}`,
-            });
-            problem.image = result.secure_url;
-            console.log('画像アップロード成功:', problem.image); // 成功ログ
-        } catch (uploadErr) {
-            console.error('Cloudinaryアップロードエラー:', uploadErr);
-            return res.status(500).send('画像アップロードに失敗しました');
-        }
+        // ファイルをpublic/uploadsに移動
+        await file.mv(filePath);
+        problem.image = `/uploads/${fileName}`;
+        console.log('画像アップロード成功:', problem.image);
 
         await saveContests(contests);
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
@@ -1798,7 +1793,7 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
     }
 });
 
-// ルート：ユーザー管理
+// ルート：ユーザー管理ページ
 app.get('/admin/users', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -1809,21 +1804,25 @@ app.get('/admin/users', async (req, res) => {
             <section class="hero">
                 <h2>ユーザー管理</h2>
                 <table class="user-table">
-                    <tr><th>ユーザー名</th><th>管理者</th><th>操作</th></tr>
+                    <tr><th>ユーザー名</th><th>管理者権限</th><th>操作</th></tr>
                     ${users
-                        .map((u) => `
+                        .map((u, index) => `
                             <tr>
                                 <td>${u.username}</td>
                                 <td>${u.isAdmin ? 'はい' : 'いいえ'}</td>
                                 <td>
-                                    <form action="/admin/toggle-admin" method="POST" style="display:inline;">
-                                        <input type="hidden" name="username" value="${u.username}">
-                                        <button type="submit">${u.isAdmin ? '管理者解除' : '管理者にする'}</button>
+                                    <form id="delete-user-form-${index}" action="/admin/delete-user" method="POST" style="display:inline;">
+                                        <input type="hidden" name="index" value="${index}">
+                                        <button type="button" onclick="confirmDeletion('delete-user-form-${index}')">削除</button>
                                     </form>
-                                    <form action="/admin/delete-user" method="POST" style="display:inline;">
-                                        <input type="hidden" name="username" value="${u.username}">
-                                        <button type="submit">削除</button>
-                                    </form>
+                                    ${
+                                        !u.isAdmin
+                                            ? `<form action="/admin/toggle-admin" method="POST" style="display:inline;">
+                                                <input type="hidden" name="index" value="${index}">
+                                                <button type="submit">管理者にする</button>
+                                            </form>`
+                                            : ''
+                                    }
                                 </td>
                             </tr>
                         `)
@@ -1834,20 +1833,43 @@ app.get('/admin/users', async (req, res) => {
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
-        console.error('ユーザー管理エラー:', err);
+        console.error('ユーザー管理ページエラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
 
+// ルート：ユーザー削除
+app.post('/admin/delete-user', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user || !user.isAdmin) return res.redirect('/login');
+        const { index } = req.body;
+        const users = await loadUsers();
+        const idx = parseInt(index);
+        if (idx >= 0 && idx < users.length) {
+            if (users[idx].username === user.username) {
+                return res.status(403).send('自分自身を削除することはできません');
+            }
+            users.splice(idx, 1);
+            await saveUsers(users);
+        }
+        res.redirect('/admin/users');
+    } catch (err) {
+        console.error('ユーザー削除エラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+// ルート：管理者権限の切り替え
 app.post('/admin/toggle-admin', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user || !user.isAdmin) return res.redirect('/login');
-        const { username } = req.body;
+        const { index } = req.body;
         const users = await loadUsers();
-        const targetUser = users.find((u) => u.username === username);
-        if (targetUser) {
-            targetUser.isAdmin = !targetUser.isAdmin;
+        const idx = parseInt(index);
+        if (idx >= 0 && idx < users.length) {
+            users[idx].isAdmin = !users[idx].isAdmin;
             await saveUsers(users);
         }
         res.redirect('/admin/users');
@@ -1857,23 +1879,14 @@ app.post('/admin/toggle-admin', async (req, res) => {
     }
 });
 
-app.post('/admin/delete-user', async (req, res) => {
-    try {
-        const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
-        const { username } = req.body;
-        const users = await loadUsers();
-        const updatedUsers = users.filter((u) => u.username !== username);
-        await saveUsers(updatedUsers);
-        res.redirect('/admin/users');
-    } catch (err) {
-        console.error('ユーザー削除エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました");
-    }
-});
-
 // サーバー起動
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`サーバーがポート${PORT}で起動しました`);
+});
+
+// MongoDB接続の初期化
+connectToMongo().catch((err) => {
+    console.error('MongoDB初期接続エラー:', err);
+    process.exit(1);
 });
