@@ -238,21 +238,98 @@ const generatePage = (nav, content, includeFooter = true) => `
 // ユーザー取得関数（修正：エラー防止とデバッグ強化）
 const getUserFromCookie = async (req) => {
     try {
+        console.log('getUserFromCookie: リクエストクッキー:', req.cookies); // クッキー全体を確認
         const username = req.cookies.username;
-        console.log('Cookie username:', username); // デバッグ用
+        console.log('getUserFromCookie: Cookie username:', username);
+
         if (!username) {
-            console.log('クッキーにusernameが見つかりません');
+            console.log('getUserFromCookie: クッキーにusernameが見つかりません');
             return null;
         }
+
         const users = await loadUsers();
+        console.log('getUserFromCookie: 読み込んだユーザー一覧:', users);
+
+        if (!Array.isArray(users)) {
+            console.error('getUserFromCookie: usersが配列ではありません:', users);
+            return null;
+        }
+
         const user = users.find((u) => u.username === username) || null;
-        console.log('Found user:', user); // デバッグ用
+        console.log('getUserFromCookie: 見つかったユーザー:', user);
+
+        if (!user) {
+            console.log('getUserFromCookie: ユーザーが見つかりませんでした:', username);
+            return null;
+        }
+
         return user;
     } catch (err) {
-        console.error('getUserFromCookieエラー:', err);
+        console.error('getUserFromCookie: エラー発生:', err);
         return null;
     }
 };
+
+// サンプルルート（例: /admin）での使用例
+app.get('/admin', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        console.log('/admin: 取得したユーザー:', user);
+
+        // userがnullまたはundefinedの場合、またはusernameプロパティがない場合にリダイレクト
+        if (!user || !user.username) {
+            console.log('/admin: ユーザー情報が不正または存在しないためログイン画面へ');
+            return res.redirect('/login');
+        }
+
+        if (!user.isAdmin) {
+            console.log('/admin: 管理者権限なし、/contestsへリダイレクト');
+            return res.redirect('/contests');
+        }
+
+        const contests = await loadContests();
+        const nav = generateNav(user);
+        const content = `
+            <section class="hero">
+                <h2>管理者ダッシュボード</h2>
+                <p>ここでコンテストとユーザーの管理ができます。</p>
+                <form action="/admin/add-contest" method="GET">
+                    <button type="submit">コンテストを追加</button>
+                </form>
+                <h3>現在のコンテスト</h3>
+                <ul>
+                    ${
+                        contests
+                            .map(
+                                (contest, index) => {
+                                    const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+                                    const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+                                    return `
+                                        <li>
+                                            ${contest.title} (開始: ${start}, 終了: ${end})
+                                            <form action="/admin/delete-contest" method="POST" style="display:inline;">
+                                                <input type="hidden" name="index" value="${index}">
+                                                <button type="submit">削除</button>
+                                            </form>
+                                            <a href="/admin/contest-details/${index}">詳細</a>
+                                            <a href="/admin/edit-contest/${index}">編集</a>
+                                        </li>
+                                    `;
+                                }
+                            )
+                            .join('') || '<p>コンテストがありません</p>'
+                    }
+                </ul>
+                <h3>ユーザー管理</h3>
+                <a href="/admin/users">ユーザー管理ページへ</a>
+            </section>
+        `;
+        res.send(generatePage(nav, content));
+    } catch (err) {
+        console.error('/admin: エラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
 
 // コンテスト管理権限のチェック関数（修正：安全性向上）
 const canManageContest = (user, contest) => {
