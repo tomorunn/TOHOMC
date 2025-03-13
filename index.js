@@ -154,17 +154,16 @@ const generateNav = (user) => {
     `;
 };
 
-// TeX内容を左揃えにし、自動改行を追加するラッパー関数
+// TeX内容を左揃えにするラッパー関数
 const wrapWithFlalign = (content) => {
     if (!content) return '';
     if (content.includes('\\begin{flalign}') || content.includes('\\end{flalign}')) {
-        return content;
+        return content; // 既に flalign が含まれている場合はそのまま返す
     }
     const displayMathPattern = /\$\$(.*?)\$\$|\[(.*?)\]/gs;
     return content.replace(displayMathPattern, (match, p1, p2) => {
         let innerContent = p1 || p2 || '';
-        formattedContent += currentLine.trim();
-        return `$$\\begin{flalign}${formattedContent}\\end{flalign}$$`;
+        return `$$\\begin{flalign}${innerContent}\\end{flalign}$$`;
     });
 };
 
