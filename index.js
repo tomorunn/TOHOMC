@@ -1766,10 +1766,6 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
     }
 });
 
-// ルート：問題詳細（管理者）
-const express = require('express');
-const app = express();
-const cloudinary = require('cloudinary').v2;
 
 // ミドルウェアの設定（必要に応じて）
 app.use(express.urlencoded({ extended: true }));
