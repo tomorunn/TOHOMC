@@ -1826,7 +1826,7 @@ app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
     });
 });
 
-// ミドルウェアの設定（必要に応じて）
+// ミドルウェアの設定
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -1912,62 +1912,82 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
 });
 
 // 画像アップロード用のエンドポイント
-app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
-    try {
-        const user = await getUserFromCookie(req);
-        if (!user || !user.username) {
-            console.error('ユーザー情報が不正:', user);
-            return res.redirect('/login');
+app.post('/admin/problem/:contestId/:problemId/upload', (req, res) => {
+    const form = new formidable.IncomingForm();
+    form.parse(req, async (err, fields, files) => {
+        if (err) {
+            console.error('フォーム解析エラー:', err);
+            return res.status(500).send('フォーム解析エラーが発生しました');
         }
 
-        const contests = await loadContests();
-        const contestId = parseInt(req.params.contestId);
-        const problemId = req.params.problemId;
+        try {
+            console.log('リクエストヘッダー:', req.headers); // クッキー確認用
+            const user = await getUserFromCookie(req);
+            console.log('getUserFromCookieの結果:', user); // ユーザーオブジェクトの中身を確認
 
-        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-            return res.status(404).send('無効なコンテストIDです');
+            // userがnull/undefinedまたはusernameがない場合
+            if (!user || !user.username) {
+                console.error('ユーザー認証エラー: user=', user);
+                return res.redirect('/login');
+            }
+
+            const contests = await loadContests();
+            console.log('コンテストデータ:', contests); // コンテストデータの確認
+            const contestId = parseInt(req.params.contestId);
+            const problemId = req.params.problemId;
+
+            if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+                console.error('無効なコンテストID:', contestId);
+                return res.status(404).send('無効なコンテストIDです');
+            }
+
+            const contest = contests[contestId];
+            console.log('選択されたコンテスト:', contest);
+
+            const canManage = canManageContest(user, contest);
+            console.log('canManageContestの結果:', canManage); // 権限チェックの結果
+            if (!canManage) {
+                console.error('権限不足: user=', user, 'contest=', contest);
+                return res
+                    .status(403)
+                    .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+            }
+
+            const imageFile = files.image;
+            if (!imageFile) {
+                console.error('画像ファイルが見つかりません:', files);
+                return res.status(400).send('画像ファイルが選択されていません');
+            }
+
+            if (!imageFile.mimetype.startsWith('image/')) {
+                console.error('無効なMIMEタイプ:', imageFile.mimetype);
+                return res.status(400).send('画像ファイルのみアップロード可能です');
+            }
+
+            console.log('アップロード開始:', imageFile.filepath);
+            const uploadResult = await cloudinary.uploader.upload(imageFile.filepath, {
+                upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
+                folder: `contests/${contestId}/problems/${problemId}`,
+                transformation: { width: 800, crop: "scale" },
+            });
+            console.log('アップロード成功:', uploadResult.secure_url);
+
+            const problem = contest.problems.find((p) => p.id === problemId);
+            if (problem) {
+                problem.image = uploadResult.secure_url;
+                console.log('問題データ更新:', problem);
+                // コンテストデータを永続化する処理が必要ならここで
+                // await saveContests(contests);
+            }
+
+            res.redirect(`/admin/problem/${contestId}/${problemId}`);
+        } catch (err) {
+            console.error('画像アップロードエラー:', err);
+            res.status(500).send('サーバーエラーが発生しました');
         }
-
-        const contest = contests[contestId];
-        if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
-        }
-
-        // ファイルがアップロードされているか確認
-        const imageFile = req.files && req.files.image;
-        if (!imageFile) {
-            return res.status(400).send('画像ファイルが選択されていません');
-        }
-
-        // 画像ファイルのMIMEタイプをチェック
-        if (!imageFile.mimetype.startsWith('image/')) {
-            return res.status(400).send('画像ファイルのみアップロード可能です');
-        }
-
-        // Cloudinaryにアップロード
-        const uploadResult = await cloudinary.uploader.upload(imageFile.tempFilePath, {
-            upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
-            folder: `contests/${contestId}/problems/${problemId}`,
-            transformation: { width: 800, crop: "scale" },
-        });
-
-        // アップロード成功後、問題データを更新（必要に応じて）
-        const problem = contest.problems.find((p) => p.id === problemId);
-        if (problem) {
-            problem.image = uploadResult.secure_url; // アップロードされた画像のURLを保存
-            // コンテストデータを永続化する処理が必要ならここで保存
-            // 例: await saveContests(contests);
-        }
-
-        // アップロード成功後にリダイレクト
-        res.redirect(`/admin/problem/${contestId}/${problemId}`);
-    } catch (err) {
-        console.error('画像アップロードエラー:', err);
-        res.status(500).send('サーバーエラーが発生しました');
-    }
+    });
 });
+
 
 app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
