@@ -3,37 +3,30 @@ const { DateTime } = require('luxon');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const { MongoClient } = require('mongodb');
-const cloudinary = require('cloudinary').v2; // Cloudinaryモジュールの導入
-const multer = require('multer'); // ファイルアップロード用ミドルウェア
+const fileUpload = require('express-fileupload');
+const fs = require('fs').promises; // ファイルシステムモジュール
 
 const app = express();
 
 require('dotenv').config();
-
-// Cloudinaryの設定
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// Multerの設定（一時的にサーバーにファイルを保存）
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, './uploads/'); // 一時保存先
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname); // ユニークなファイル名
-    },
-});
-const upload = multer({ storage: storage, limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB制限
 
 // ミドルウェアの設定（順序が重要）
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public'))); // ファビコン対応
+app.use(fileUpload({
+    useTempFiles: true,
+    tempFileDir: '/tmp/',
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB制限
+    abortOnLimit: true, // 制限を超えたら即時中止
+}));
 
+// uploadsディレクトリを作成（存在しない場合）
+const uploadDir = path.join(__dirname, 'public', 'uploads');
+fs.mkdir(uploadDir, { recursive: true }).catch(err => console.error('アップロードディレクトリ作成エラー:', err));
+
+// MongoDB 接続設定
 // MongoDB 接続設定
 const uri = process.env.MONGO_URI;
 if (!uri) {
@@ -97,6 +90,14 @@ app.use(async (req, res, next) => {
         res.status(503).send("データベースに接続できませんでした。後で再試行してください。");
     }
 });
+
+// サーバー起動時に接続を試みる（削除可能）
+/*
+connectToMongo().catch((err) => {
+    console.error('MongoDB初期接続エラー:', err);
+    process.exit(1);
+});
+*/
 
 // ユーザー情報の読み込み
 const loadUsers = async () => {
@@ -551,9 +552,8 @@ app.post('/admin/add-contest', async (req, res) => {
                 writer: '',
                 content: '',
                 correctAnswer: '',
-                image: '', // 問題画像
+                image: '',
                 explanation: '',
-                explanationImage: '', // 解説画像
             })),
             managers: [user.username],
             submissions: [],
@@ -1258,11 +1258,6 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
                 <h2>${contest.title} - 問題 ${problemId} 解答解説</h2>
                 <div class="problem-display">
                     <p>解説: <span class="math-tex">${displayExplanation}</span></p>
-                    ${
-                        problem.explanationImage
-                            ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px;"></p>`
-                            : ''
-                    }
                 </div>
                 <p><a href="/contest/${contestId}/submit/${problemId}">問題に戻る</a></p>
             </section>
@@ -1673,9 +1668,8 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
             const existingProblem = contest.problems.find((p) => p.id === problemId) || {};
             const image = req.body[`image_${problemId}`] || existingProblem.image || '';
             const explanation = existingProblem.explanation || '';
-            const explanationImage = existingProblem.explanationImage || '';
 
-            return { id: problemId, score, writer, content, correctAnswer, image, explanation, explanationImage };
+            return { id: problemId, score, writer, content, correctAnswer, image, explanation };
         });
 
         contest.title = title;
@@ -1717,7 +1711,6 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                 writer: '未設定',
                 image: '',
                 explanation: '',
-                explanationImage: '',
             };
 
         let displayContent = problem.content || '未設定';
@@ -1743,14 +1736,9 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                             : '<p>画像: 未設定</p>'
                     }
                     <p>解説: <span class="math-tex">${displayExplanation}</span></p>
-                    ${
-                        problem.explanationImage
-                            ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px;"></p>`
-                            : '<p>解説画像: 未設定</p>'
-                    }
                 </div>
                 <h3>問題内容の編集</h3>
-                <form method="POST" action="/admin/problem/${contestId}/${problemId}" enctype="multipart/form-data">
+                <form method="POST" action="/admin/problem/${contestId}/${problemId}">
                     <label>問題内容 (TeX使用可, $$...$$で囲む):</label><br>
                     <textarea name="content" placeholder="問題内容">${problem.content || ''}</textarea><br>
                     <label>点数:</label><br>
@@ -1759,15 +1747,17 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                     <input type="text" name="writer" value="${problem.writer || ''}" placeholder="作成者"><br>
                     <label>正解:</label><br>
                     <input type="text" name="correctAnswer" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
-                    <label>問題画像:</label><br>
-                    <input type="file" name="image" accept="image/*"><br>
                     <label>解説 (TeX使用可):</label><br>
                     <textarea name="explanation" placeholder="解答解説">${problem.explanation || ''}</textarea><br>
-                    <label>解説画像:</label><br>
-                    <input type="file" name="explanationImage" accept="image/*"><br>
                     <button type="submit">保存</button>
-                                        <p><a href="/admin/contest-details/${contestId}">コンテスト詳細に戻る</a></p>
                 </form>
+                <h3>画像アップロード</h3>
+                <form method="POST" action="/admin/problem/${contestId}/${problemId}/upload-image" enctype="multipart/form-data">
+                    <label>画像を選択:</label><br>
+                    <input type="file" name="image" accept="image/*" required><br>
+                    <button type="submit">画像をアップロード</button>
+                </form>
+                <p><a href="/admin/contest-details/${contestId}">コンテスト詳細に戻る</a></p>
             </section>
         `;
         res.send(generatePage(nav, content));
@@ -1777,8 +1767,8 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     }
 });
 
-// ルート：問題編集処理（Cloudinaryを使用した画像アップロードを含む）
-app.post('/admin/problem/:contestId/:problemId', upload.fields([{ name: 'image' }, { name: 'explanationImage' }]), async (req, res) => {
+// 問題内容の保存
+app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
@@ -1800,48 +1790,81 @@ app.post('/admin/problem/:contestId/:problemId', upload.fields([{ name: 'image' 
             return res.status(404).send('無効な問題IDです');
         }
 
-        // フォームから送信されたデータを取得
-        const { content, score, writer, correctAnswer, explanation } = req.body;
-
-        // Cloudinaryに画像をアップロード（問題画像）
-        let imageUrl = problem.image || '';
-        if (req.files && req.files['image']) {
-            const imageFile = req.files['image'][0];
-            const uploadResult = await cloudinary.uploader.upload(imageFile.path, {
-                folder: `contest_${contestId}/problems`,
-                public_id: `${problemId}_image_${Date.now()}`,
-            });
-            imageUrl = uploadResult.secure_url;
-            // 一時ファイルを削除（multerが保存したもの）
-            require('fs').unlinkSync(imageFile.path);
-        }
-
-        // Cloudinaryに解説画像をアップロード
-        let explanationImageUrl = problem.explanationImage || '';
-        if (req.files && req.files['explanationImage']) {
-            const explanationImageFile = req.files['explanationImage'][0];
-            const uploadResult = await cloudinary.uploader.upload(explanationImageFile.path, {
-                folder: `contest_${contestId}/explanations`,
-                public_id: `${problemId}_explanation_${Date.now()}`,
-            });
-            explanationImageUrl = uploadResult.secure_url;
-            // 一時ファイルを削除
-            require('fs').unlinkSync(explanationImageFile.path);
-        }
-
-        // 問題データを更新
-        problem.content = content || problem.content || '';
-        problem.score = parseInt(score) || problem.score || 100;
-        problem.writer = writer || problem.writer || '';
-        problem.correctAnswer = correctAnswer || problem.correctAnswer || '';
-        problem.image = imageUrl;
-        problem.explanation = explanation || problem.explanation || '';
-        problem.explanationImage = explanationImageUrl;
+        problem.content = req.body.content || problem.content || '';
+        problem.score = parseInt(req.body.score) || problem.score || 100;
+        problem.writer = req.body.writer || problem.writer || '';
+        problem.correctAnswer = req.body.correctAnswer || problem.correctAnswer || '';
+        problem.explanation = req.body.explanation || problem.explanation || '';
 
         await saveContests(contests);
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
     } catch (err) {
-        console.error('問題編集処理エラー:', err);
+        console.error('問題更新処理エラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+const { promisify } = require('util');
+const stream = require('stream');
+const pipelineAsync = promisify(stream.pipeline);
+
+// 画像アップロード処理（最適化版）
+app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user) return res.redirect('/login');
+        const contests = await loadContests();
+        const contestId = parseInt(req.params.contestId);
+        const problemId = req.params.problemId;
+
+        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+            return res.status(404).send('無効なコンテストIDです');
+        }
+
+        const contest = contests[contestId];
+        if (!canManageContest(user, contest)) {
+            return res.status(403).send('このコンテストを管理する権限がありません');
+        }
+
+        const problem = contest.problems.find((p) => p.id === problemId);
+        if (!problem) {
+            return res.status(404).send('無効な問題IDです');
+        }
+
+        if (!req.files || !req.files.image) {
+            return res.status(400).send('画像ファイルが選択されていません');
+        }
+
+        const file = req.files.image;
+        const fileName = `${contestId}_${problemId}_${Date.now()}_${file.name}`;
+        const filePath = path.join(uploadDir, fileName);
+
+        // ファイルサイズ制限（例: 5MB）
+        const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+        if (file.size > MAX_FILE_SIZE) {
+            return res.status(400).send('ファイルサイズが大きすぎます（最大5MB）');
+        }
+
+        // ストリームを使用してファイルを保存
+        const writeStream = require('fs').createWriteStream(filePath);
+        await pipelineAsync(file.data, writeStream);
+
+        // 画像パスを更新
+        problem.image = `/uploads/${fileName}`;
+        console.log('画像アップロード成功:', problem.image);
+
+        // 特定のドキュメントのみを更新（効率化）
+        const database = await connectToMongo();
+        const collection = database.collection('contests');
+        await collection.updateOne(
+            { _id: contest._id }, // MongoDBの_idを使用（必要に応じて調整）
+            { $set: { [`problems.$[elem].image`]: problem.image } },
+            { arrayFilters: [{ 'elem.id': problemId }] }
+        );
+
+        res.redirect(`/admin/problem/${contestId}/${problemId}`);
+    } catch (err) {
+        console.error('画像アップロード処理エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
@@ -1853,21 +1876,20 @@ app.get('/admin/users', async (req, res) => {
         if (!user || !user.isAdmin) return res.redirect('/login');
         const users = await loadUsers();
         const nav = generateNav(user);
-
         const content = `
             <section class="hero">
                 <h2>ユーザー管理</h2>
                 <table class="user-table">
-                    <tr><th>ユーザー名</th><th>管理者権限</th><th>アクション</th></tr>
+                    <tr><th>ユーザー名</th><th>管理者権限</th><th>操作</th></tr>
                     ${users
                         .map((u, index) => `
                             <tr>
                                 <td>${u.username}</td>
                                 <td>${u.isAdmin ? 'はい' : 'いいえ'}</td>
                                 <td>
-                                    <form id="delete-user-${index}" action="/admin/delete-user" method="POST" style="display:inline;">
+                                    <form id="delete-user-form-${index}" action="/admin/delete-user" method="POST" style="display:inline;">
                                         <input type="hidden" name="index" value="${index}">
-                                        <button type="button" onclick="confirmDeletion('delete-user-${index}')">削除</button>
+                                        <button type="button" onclick="confirmDeletion('delete-user-form-${index}')">削除</button>
                                     </form>
                                     ${
                                         !u.isAdmin
@@ -1887,7 +1909,7 @@ app.get('/admin/users', async (req, res) => {
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
-        console.error('ユーザー管理エラー:', err);
+        console.error('ユーザー管理ページエラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
@@ -1900,18 +1922,13 @@ app.post('/admin/delete-user', async (req, res) => {
         const { index } = req.body;
         const users = await loadUsers();
         const idx = parseInt(index);
-
-        if (isNaN(idx) || idx < 0 || idx >= users.length) {
-            return res.status(400).send('無効なユーザーインデックスです');
+        if (idx >= 0 && idx < users.length) {
+            if (users[idx].username === user.username) {
+                return res.status(403).send('自分自身を削除することはできません');
+            }
+            users.splice(idx, 1);
+            await saveUsers(users);
         }
-
-        // 自分自身を削除しようとした場合はエラー
-        if (users[idx].username === user.username) {
-            return res.status(403).send('自分自身を削除することはできません');
-        }
-
-        users.splice(idx, 1);
-        await saveUsers(users);
         res.redirect('/admin/users');
     } catch (err) {
         console.error('ユーザー削除エラー:', err);
@@ -1927,32 +1944,15 @@ app.post('/admin/toggle-admin', async (req, res) => {
         const { index } = req.body;
         const users = await loadUsers();
         const idx = parseInt(index);
-
-        if (isNaN(idx) || idx < 0 || idx >= users.length) {
-            return res.status(400).send('無効なユーザーインデックスです');
+        if (idx >= 0 && idx < users.length) {
+            users[idx].isAdmin = !users[idx].isAdmin;
+            await saveUsers(users);
         }
-
-        users[idx].isAdmin = !users[idx].isAdmin;
-        await saveUsers(users);
         res.redirect('/admin/users');
     } catch (err) {
         console.error('管理者権限切り替えエラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
-});
-
-// 404エラーハンドリング
-app.use((req, res) => {
-    const user = req.cookies.username ? { username: req.cookies.username } : null;
-    const nav = generateNav(user);
-    const content = `
-        <section class="hero">
-            <h2>404 - ページが見つかりません</h2>
-            <p>お探しのページは存在しないか、移動した可能性があります。</p>
-            <p><a href="/">ホームに戻る</a></p>
-        </section>
-    `;
-    res.status(404).send(generatePage(nav, content));
 });
 
 // サーバー起動
@@ -1961,14 +1961,8 @@ app.listen(PORT, () => {
     console.log(`サーバーがポート${PORT}で起動しました`);
 });
 
-// MongoDB接続のクローズ処理（プロセス終了時）
-process.on('SIGINT', async () => {
-    try {
-        await client.close();
-        console.log('MongoDB接続をクローズしました');
-        process.exit(0);
-    } catch (err) {
-        console.error('MongoDB接続クローズエラー:', err);
-        process.exit(1);
-    }
+// MongoDB接続の初期化
+connectToMongo().catch((err) => {
+    console.error('MongoDB初期接続エラー:', err);
+    process.exit(1);
 });
