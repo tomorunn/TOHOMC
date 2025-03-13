@@ -60,7 +60,17 @@ nav {
     font-size: 2rem; /* 32px */
 }
 
-.nav-container ul {
+.nav-toggle {
+    display: none; /* デフォルトでは非表示 */
+    background: none;
+    border: none;
+    font-size: 2rem; /* ハンバーガーメニューのサイズ */
+    color: #fff;
+    cursor: pointer;
+    padding: 0;
+}
+
+.nav-menu {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -68,17 +78,53 @@ nav {
     gap: 2rem; /* 間隔を広く */
 }
 
-.nav-container ul li {
-    display: inline;
+.nav-menu li {
+    /* display: inline; は不要（flexで管理） */
 }
 
-.nav-container ul li a {
+.nav-menu li a {
     color: #fff;
     font-size: 1.25rem; /* 20px */
 }
 
-.nav-container ul li a:hover {
+.nav-menu li a:hover {
     color: #ecf0f1;
+}
+
+/* モバイル対応 */
+@media (max-width: 768px) {
+    .nav-toggle {
+        display: block; /* モバイルで表示 */
+    }
+
+    .nav-menu {
+        display: none; /* デフォルトで非表示 */
+        flex-direction: column;
+        position: absolute;
+        top: 100%; /* navの下に配置 */
+        left: 0;
+        right: 0;
+        background-color: #2c3e50; /* 既存のnav背景色と一致 */
+        padding: 1.5rem;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .nav-menu.active {
+        display: flex; /* トグルで表示 */
+    }
+
+    .nav-menu li {
+        margin: 1rem 0; /* 縦に並ぶ際の間隔 */
+    }
+
+    .nav-menu li a {
+        font-size: 1.25rem; /* 既存サイズを維持 */
+    }
+
+    .nav-menu li.username {
+        color: #fff; /* "Hi, username" の色を白に */
+        font-size: 1.25rem;
+    }
 }
 
 /* メインコンテンツ */

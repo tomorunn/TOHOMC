@@ -171,29 +171,41 @@ const saveContests = async (contests) => {
 };
 
 // ナビゲーション生成関数
+// ナビゲーション生成関数を修正
 const generateNav = (user) => {
     if (user) {
         return `
-            <nav>
+            <nav class="nav">
                 <div class="nav-container">
                     <h1>TOHOMC</h1>
-                    <ul>
+                    <button class="nav-toggle">☰</button>
+                    <ul class="nav-menu">
                         <li><a href="/">ホーム</a></li>
                         <li><a href="/contests">コンテスト</a></li>
                         <li><a href="/problems">PROBLEMS</a></li>
                         <li><a href="/admin">管理者ダッシュボード</a></li>
-                        <li style="color: #fff;">Hi, ${user.username}</li>
+                        <li class="username">Hi, ${user.username}</li>
                         <li><a href="/logout">ログアウト</a></li>
                     </ul>
                 </div>
             </nav>
+            <script>
+                document.addEventListener('DOMContentLoaded', () => {
+                    const toggle = document.querySelector('.nav-toggle');
+                    const menu = document.querySelector('.nav-menu');
+                    toggle.addEventListener('click', () => {
+                        menu.classList.toggle('active');
+                    });
+                });
+            </script>
         `;
     }
     return `
-        <nav>
+        <nav class="nav">
             <div class="nav-container">
                 <h1>TOHOMC</h1>
-                <ul>
+                <button class="nav-toggle">☰</button>
+                <ul class="nav-menu">
                     <li><a href="/">ホーム</a></li>
                     <li><a href="/contests">コンテスト</a></li>
                     <li><a href="/problems">PROBLEMS</a></li>
@@ -202,6 +214,15 @@ const generateNav = (user) => {
                 </ul>
             </div>
         </nav>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const toggle = document.querySelector('.nav-toggle');
+                const menu = document.querySelector('.nav-menu');
+                toggle.addEventListener('click', () => {
+                    menu.classList.toggle('active');
+                });
+            });
+        </script>
     `;
 };
 
