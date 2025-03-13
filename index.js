@@ -1915,12 +1915,10 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     res.status(404).send('ページが見つかりません <a href="/">ホームに戻る</a>');
     });
     
-    // サーバー起動
-    const PORT = process.env.PORT || 3000;
- // MongoDB接続をグローバルに初期化（初回リクエスト時に実行）
+// MongoDB接続を初回リクエスト時に実行
 connectToMongo().catch((err) => {
     console.error('初期MongoDB接続エラー:', err);
-  });
-  
-  // Vercel用にExpressアプリをエクスポート
-  module.exports = app;
+});
+
+// Vercel用にアプリをエクスポート
+module.exports = app;
