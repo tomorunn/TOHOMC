@@ -1771,11 +1771,11 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 管理者向けの問題詳細ページ
+// 管理者向けの問題詳細ページ（変更なし）
 app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) return res.redirect('/login'); // usernameのチェックを追加
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1856,7 +1856,10 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
 app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) {
+            console.error('ユーザー情報が不正:', user);
+            return res.redirect('/login');
+        }
 
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
@@ -1903,7 +1906,7 @@ app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
     } catch (err) {
         console.error('画像アップロードエラー:', err);
-        res.status(500).send('画像アップロード中にエラーが発生しました');
+        res.status(500).send('サーバーエラーが発生しました');
     }
 });
 
