@@ -30,14 +30,12 @@ app.use(fileUpload({
 
 // MongoDB 接続設定
 const uri = process.env.MONGO_URI;
-console.log("MONGO_URI:", uri); // デバッグ用
 const client = new MongoClient(uri);
 let db;
 
 async function connectToMongo() {
     if (!db) {
         console.log("MongoDBに接続しようとしています...");
-        console.log("MONGO_URI:", process.env.MONGO_URI);
         try {
             await client.connect();
             db = client.db('contest');
@@ -110,7 +108,6 @@ const saveContests = async (contests) => {
     try {
         const database = await connectToMongo();
         const collection = database.collection('contests');
-        console.log("保存するコンテストデータ:", contests);
         await collection.drop(); // 既存データをクリア
         if (contests.length > 0) {
             await collection.insertMany(contests);
@@ -166,8 +163,7 @@ const wrapWithFlalign = (content) => {
     const displayMathPattern = /\$\$(.*?)\$\$|\[(.*?)\]/gs;
     return content.replace(displayMathPattern, (match, p1, p2) => {
         let innerContent = p1 || p2 || '';
-        // 長い数式を自動改行（例: 25文字ごとに \\ を挿入）
-        const MAX_LINE_LENGTH = 25;
+        const MAX_LINE_LENGTH = 50;
         let formattedContent = '';
         let currentLine = '';
         innerContent.split(' ').forEach((token) => {
@@ -207,15 +203,12 @@ const generatePage = (nav, content, includeFooter = true) => `
             }
         </style>
         <script>
-            // formatTime関数をグローバルスコープに定義
             window.formatTime = function(seconds) {
                 const hours = Math.floor(seconds / 3600);
                 const minutes = Math.floor((seconds % 3600) / 60);
                 const secs = seconds % 60;
                 return \`\${hours}:\${minutes < 10 ? '0' : ''}\${minutes}:\${secs < 10 ? '0' : ''}\${secs}\`;
             };
-            console.log('formatTime function defined:', typeof window.formatTime);
-
             window.MathJax = {
                 tex: {
                     inlineMath: [['$', '$'], ['\\(', '\\)']],
@@ -229,7 +222,6 @@ const generatePage = (nav, content, includeFooter = true) => `
                     ready: () => {
                         MathJax.startup.defaultReady();
                         MathJax.startup.promise.then(() => {
-                            console.log('MathJax is loaded and initialized');
                             MathJax.typesetPromise();
                         });
                     }
@@ -249,108 +241,23 @@ const generatePage = (nav, content, includeFooter = true) => `
     </html>
 `;
 
-// ユーザー取得関数（修正：エラー防止とデバッグ強化）
+// ユーザー取得関数
 const getUserFromCookie = async (req) => {
     try {
-        console.log('getUserFromCookie: リクエストクッキー:', req.cookies); // クッキー全体を確認
         const username = req.cookies.username;
-        console.log('getUserFromCookie: Cookie username:', username);
-
-        if (!username) {
-            console.log('getUserFromCookie: クッキーにusernameが見つかりません');
-            return null;
-        }
-
+        if (!username) return null;
         const users = await loadUsers();
-        console.log('getUserFromCookie: 読み込んだユーザー一覧:', users);
-
-        if (!Array.isArray(users)) {
-            console.error('getUserFromCookie: usersが配列ではありません:', users);
-            return null;
-        }
-
         const user = users.find((u) => u.username === username) || null;
-        console.log('getUserFromCookie: 見つかったユーザー:', user);
-
-        if (!user) {
-            console.log('getUserFromCookie: ユーザーが見つかりませんでした:', username);
-            return null;
-        }
-
         return user;
     } catch (err) {
-        console.error('getUserFromCookie: エラー発生:', err);
+        console.error('getUserFromCookieエラー:', err);
         return null;
     }
 };
 
-// サンプルルート（例: /admin）での使用例
-app.get('/admin', async (req, res) => {
-    try {
-        const user = await getUserFromCookie(req);
-        console.log('/admin: 取得したユーザー:', user);
-
-        // userがnullまたはundefinedの場合、またはusernameプロパティがない場合にリダイレクト
-        if (!user || !user.username) {
-            console.log('/admin: ユーザー情報が不正または存在しないためログイン画面へ');
-            return res.redirect('/login');
-        }
-
-        if (!user.isAdmin) {
-            console.log('/admin: 管理者権限なし、/contestsへリダイレクト');
-            return res.redirect('/contests');
-        }
-
-        const contests = await loadContests();
-        const nav = generateNav(user);
-        const content = `
-            <section class="hero">
-                <h2>管理者ダッシュボード</h2>
-                <p>ここでコンテストとユーザーの管理ができます。</p>
-                <form action="/admin/add-contest" method="GET">
-                    <button type="submit">コンテストを追加</button>
-                </form>
-                <h3>現在のコンテスト</h3>
-                <ul>
-                    ${
-                        contests
-                            .map(
-                                (contest, index) => {
-                                    const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-                                    const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-                                    return `
-                                        <li>
-                                            ${contest.title} (開始: ${start}, 終了: ${end})
-                                            <form action="/admin/delete-contest" method="POST" style="display:inline;">
-                                                <input type="hidden" name="index" value="${index}">
-                                                <button type="submit">削除</button>
-                                            </form>
-                                            <a href="/admin/contest-details/${index}">詳細</a>
-                                            <a href="/admin/edit-contest/${index}">編集</a>
-                                        </li>
-                                    `;
-                                }
-                            )
-                            .join('') || '<p>コンテストがありません</p>'
-                    }
-                </ul>
-                <h3>ユーザー管理</h3>
-                <a href="/admin/users">ユーザー管理ページへ</a>
-            </section>
-        `;
-        res.send(generatePage(nav, content));
-    } catch (err) {
-        console.error('/admin: エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました");
-    }
-});
-
-// コンテスト管理権限のチェック関数（修正：安全性向上）
+// コンテスト管理権限のチェック関数
 const canManageContest = (user, contest) => {
-    if (!user || !user.username) {
-        console.log('ユーザー情報が不正（canManageContest）:', user);
-        return false;
-    }
+    if (!user || !user.username) return false;
     if (user.isAdmin) return true;
     const isManager = contest.managers && contest.managers.includes(user.username);
     const isWriter = contest.writers && contest.writers.includes(user.username);
@@ -362,7 +269,6 @@ const canManageContest = (user, contest) => {
 const isContestNotEnded = (contest) => {
     const now = DateTime.now().setZone('Asia/Tokyo');
     const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' });
-    console.log("現在時刻(JST):", now.toISO(), "終了時刻(JST):", end.toISO());
     return now < end;
 };
 
@@ -370,7 +276,6 @@ const isContestNotEnded = (contest) => {
 const hasContestStarted = (contest) => {
     const now = DateTime.now().setZone('Asia/Tokyo');
     const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' });
-    console.log("現在時刻(JST):", now.toISO(), "開始時刻(JST):", start.toISO());
     return now >= start;
 };
 
@@ -379,13 +284,12 @@ const isContestStartedOrActive = (contest) => {
     const now = DateTime.now().setZone('Asia/Tokyo');
     const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' });
     const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' });
-    console.log("現在時刻(JST):", now.toISO(), "開始時刻(JST):", start.toISO(), "終了時刻(JST):", end.toISO());
     return now >= start && now <= end;
 };
 
 // 問題ID生成関数
 const generateProblemIds = (count) => {
-    return Array.from({ length: count }, (_, i) => String.fromCharCode(65 + i)); // A, B, C, ...
+    return Array.from({ length: count }, (_, i) => String.fromCharCode(65 + i));
 };
 
 // ルート：ホーム
@@ -439,11 +343,7 @@ app.post('/login', async (req, res) => {
         const user = users.find((u) => u.username === username && u.password === password);
         if (user) {
             res.cookie('username', user.username, { httpOnly: true });
-            console.log('Login successful for:', username, 'isAdmin:', user.isAdmin);
-            if (user.isAdmin) {
-                return res.redirect('/admin');
-            }
-            return res.redirect('/contests');
+            return res.redirect(user.isAdmin ? '/admin' : '/contests');
         }
         res.send('ログイン失敗 <a href="/login">戻る</a>');
     } catch (err) {
@@ -499,11 +399,57 @@ app.post('/register', async (req, res) => {
     }
 });
 
+// ルート：管理者ダッシュボード
+app.get('/admin', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user || !user.isAdmin) return res.redirect('/login');
+        const contests = await loadContests();
+        const nav = generateNav(user);
+        const content = `
+            <section class="hero">
+                <h2>管理者ダッシュボード</h2>
+                <form action="/admin/add-contest" method="GET">
+                    <button type="submit">コンテストを追加</button>
+                </form>
+                <h3>現在のコンテスト</h3>
+                <ul>
+                    ${
+                        contests
+                            .map((contest, index) => {
+                                const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+                                const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+                                return `
+                                    <li>
+                                        ${contest.title} (開始: ${start}, 終了: ${end})
+                                        <form action="/admin/delete-contest" method="POST" style="display:inline;">
+                                            <input type="hidden" name="index" value="${index}">
+                                            <button type="submit">削除</button>
+                                        </form>
+                                        <a href="/admin/contest-details/${index}">詳細</a>
+                                        <a href="/admin/edit-contest/${index}">編集</a>
+                                    </li>
+                                `;
+                            })
+                            .join('') || '<p>コンテストがありません</p>'
+                    }
+                </ul>
+                <h3>ユーザー管理</h3>
+                <a href="/admin/users">ユーザー管理ページへ</a>
+            </section>
+        `;
+        res.send(generatePage(nav, content));
+    } catch (err) {
+        console.error('/adminエラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
 // ルート：コンテスト追加
 app.get('/admin/add-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.isAdmin) return res.redirect('/login');
         const nav = generateNav(user);
         const content = `
             <section class="form-container">
@@ -539,7 +485,7 @@ app.get('/admin/add-contest', async (req, res) => {
 app.post('/admin/add-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.isAdmin) return res.redirect('/login');
         const { title, description, startTime, endTime, problemCount, submissionLimit } = req.body;
         const contests = await loadContests();
         const numProblems = parseInt(problemCount);
@@ -569,7 +515,7 @@ app.post('/admin/add-contest', async (req, res) => {
             submissions: [],
             problemCount: numProblems,
             review: '',
-            submissionLimit: parseInt(submissionLimit) || 10, // デフォルト10
+            submissionLimit: parseInt(submissionLimit) || 10,
         });
         await saveContests(contests);
         res.redirect('/admin');
@@ -583,7 +529,7 @@ app.post('/admin/add-contest', async (req, res) => {
 app.post('/admin/delete-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.isAdmin) return res.redirect('/login');
         const { index } = req.body;
         const contests = await loadContests();
         const idx = parseInt(index);
@@ -603,8 +549,6 @@ app.get('/contests', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         const contests = await loadContests();
-        console.log("現在の日本時間:", DateTime.now().setZone('Asia/Tokyo').toISO());
-        console.log("読み込んだコンテスト:", contests);
         const nav = generateNav(user);
 
         const activeContestsWithIndex = contests
@@ -622,9 +566,7 @@ app.get('/contests', async (req, res) => {
                                 .map(({ contest, originalIndex }) => {
                                     const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
                                     const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-                                    const status = isContestStartedOrActive(contest)
-                                        ? '開催中'
-                                        : '準備中';
+                                    const status = isContestStartedOrActive(contest) ? '開催中' : '準備中';
                                     return `
                                         <li>
                                             <h3>${contest.title}</h3>
@@ -652,7 +594,7 @@ app.get('/contests', async (req, res) => {
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('コンテスト一覧エラー:', err);
-        res.status(500).send(`サーバーエラーが発生しました: ${err.message}`);
+        res.status(500).send("サーバーエラーが発生しました");
     }
 });
 
@@ -660,7 +602,7 @@ app.get('/contests', async (req, res) => {
 app.get('/contest/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -809,7 +751,7 @@ app.get('/contest/:contestId', async (req, res) => {
 app.get('/contest/:contestId/review', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -819,22 +761,14 @@ app.get('/contest/:contestId/review', async (req, res) => {
 
         const contest = contests[contestId];
         if (isContestNotEnded(contest)) {
-            return res
-                .status(403)
-                .send(
-                    'コンテストが終了していないため講評は閲覧できません。 <a href="/contest/' +
-                        contestId +
-                        '">戻る</a>',
-                );
+            return res.status(403).send('コンテストが終了していないため講評は閲覧できません。');
         }
 
         const nav = generateNav(user);
         const content = `
             <section class="hero">
                 <h2>${contest.title} - 講評</h2>
-                <p>${
-                    contest.review.replace(/\n/g, '<br>') || '講評がまだ書かれていません。'
-                }</p>
+                <p>${contest.review.replace(/\n/g, '<br>') || '講評がまだ書かれていません。'}</p>
                 <p><a href="/contest/${contestId}">コンテストに戻る</a></p>
             </section>
         `;
@@ -849,7 +783,7 @@ app.get('/contest/:contestId/review', async (req, res) => {
 app.get('/contest/:contestId/submissions', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -860,12 +794,10 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
         const contest = contests[contestId];
         const nav = generateNav(user);
         const submissions = contest.submissions || [];
-        let filteredSubmissions;
-        if (canManageContest(user, contest)) {
-            filteredSubmissions = submissions;
-        } else {
-            filteredSubmissions = submissions.filter((sub) => sub.user === user.username);
-        }
+        let filteredSubmissions = canManageContest(user, contest)
+            ? submissions
+            : submissions.filter((sub) => sub.user === user.username);
+
         const content = `
             <section class="hero">
                 <h2>${contest.title} - 提出一覧</h2>
@@ -916,7 +848,7 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
 app.get('/contest/:contestId/ranking', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1108,12 +1040,6 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
             </section>
             <script>
                 document.addEventListener('DOMContentLoaded', function() {
-                    console.log('DOM fully loaded, formatTime available:', typeof window.formatTime);
-                    if (typeof window.formatTime !== 'function') {
-                        console.error('formatTime is not defined!');
-                        return;
-                    }
-
                     const firstFA = ${JSON.stringify(firstFA)};
                     const startTime = ${startTime};
                     document.querySelectorAll('.first-fa').forEach(cell => {
@@ -1141,8 +1067,8 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
-        console.error('ランキングエラー詳細:', err);
-        res.status(500).send("サーバーエラーが発生しました: " + err.message);
+        console.error('ランキングエラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
     }
 });
 
@@ -1150,7 +1076,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
 app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1213,7 +1139,6 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
         if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
             content += `
                 <p style="color: red;">あなたはこのコンテストの管理者権限を持っているため、開催中に問題に回答することはできません。</p>
-                <p><a href="/contest/${contestId}">問題一覧に戻る</a></p>
             `;
         } else {
             content += `
@@ -1227,13 +1152,6 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
                         ? '<p style="color: orange;">このコンテストは未開始または終了しています。提出は可能ですが、ランキングには反映されません。</p>'
                         : ''
                 }
-                <p><a href="${
-                    hasContestStarted(contest)
-                        ? '/contest/' + contestId
-                        : '/problems'
-                }">${
-                    hasContestStarted(contest) ? '問題一覧' : 'PROBLEMSページ'
-                }に戻る</a></p>
                 <script>
                     function validateAnswer() {
                         const answer = document.querySelector('input[name="answer"]').value;
@@ -1248,7 +1166,14 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
             `;
         }
 
-        content += `</section>`;
+        content += `
+            <p><a href="${
+                hasContestStarted(contest) ? '/contest/' + contestId : '/problems'
+            }">${
+                hasContestStarted(contest) ? '問題一覧' : 'PROBLEMSページ'
+            }に戻る</a></p>
+            </section>
+        `;
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('問題提出ページエラー:', err);
@@ -1260,7 +1185,7 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
 app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1271,15 +1196,7 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
 
         const contest = contests[contestId];
         if (isContestNotEnded(contest)) {
-            return res
-                .status(403)
-                .send(
-                    'コンテストが終了していないため解説は閲覧できません。 <a href="/contest/' +
-                        contestId +
-                        '/submit/' +
-                        problemId +
-                        '">戻る</a>',
-                );
+            return res.status(403).send('コンテストが終了していないため解説は閲覧できません。');
         }
 
         const problem = contest.problems.find((p) => p.id === problemId);
@@ -1289,7 +1206,7 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
 
         let displayExplanation = problem.explanation || '未設定';
         displayExplanation = displayExplanation.replace(/\n(?![ \t]*\$)/g, '<br>');
-        displayExplanation = wrapWithFlalign(displayExplanation); // TeXプレビューを追加
+        displayExplanation = wrapWithFlalign(displayExplanation);
 
         const nav = generateNav(user);
         const content = `
@@ -1312,7 +1229,7 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
 app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1323,13 +1240,7 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
 
         const contest = contests[contestId];
         if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send(
-                    'あなたはこのコンテストの管理者権限を持っているため、開催中に問題に回答することはできません。 <a href="/contest/' +
-                        contestId +
-                        '">戻る</a>',
-                );
+            return res.status(403).send('あなたはこのコンテストの管理者権限を持っているため、開催中に問題に回答することはできません。');
         }
 
         const problem = contest.problems.find((p) => p.id === problemId);
@@ -1338,7 +1249,7 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
         }
 
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-        const submissionLimit = contest.submissionLimit || 10; // デフォルト10
+        const submissionLimit = contest.submissionLimit || 10;
         const submissionsDuringContest = (contest.submissions || [])
             .filter(
                 (sub) =>
@@ -1347,40 +1258,17 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
                     new Date(sub.date).getTime() <= endTime,
             );
         if (isContestStartedOrActive(contest) && submissionsDuringContest.length >= submissionLimit) {
-            return res
-                .status(403)
-                .send(
-                    `コンテスト中にこの問題に提出できるのは${submissionLimit}回までです。 <a href="/contest/` +
-                        contestId +
-                        '/submit/' +
-                        problemId +
-                        '">戻る</a>',
-                );
+            return res.status(403).send(`コンテスト中にこの問題に提出できるのは${submissionLimit}回までです。`);
         }
 
         const submittedAnswer = req.body.answer.trim();
         const regex = /^[0-9]+$/;
         if (!regex.test(submittedAnswer)) {
-            return res
-                .status(400)
-                .send(
-                    '解答は半角数字のみで入力してください。 <a href="/contest/' +
-                        contestId +
-                        '/submit/' +
-                        problemId +
-                        '">戻る</a>',
-                );
+            return res.status(400).send('解答は半角数字のみで入力してください。');
         }
 
-        const correctAnswer = problem.correctAnswer
-            ? problem.correctAnswer.toString().trim()
-            : null;
-        let result = '未判定';
-        if (correctAnswer) {
-            result = submittedAnswer === correctAnswer ? 'CA' : 'WA';
-        } else {
-            result = '正解が設定されていません';
-        }
+        const correctAnswer = problem.correctAnswer ? problem.correctAnswer.toString().trim() : null;
+        const result = correctAnswer ? (submittedAnswer === correctAnswer ? 'CA' : 'WA') : '未判定';
 
         const submission = {
             contestId: contestId,
@@ -1397,22 +1285,16 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
         res.redirect(`/contest/${contestId}/submissions`);
     } catch (err) {
         console.error('問題提出処理エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました: " + err.message);
+        res.status(500).send("サーバーエラーが発生しました");
     }
 });
 
 // ルート：過去の問題
 app.get('/problems', async (req, res) => {
-    console.log('リクエスト受信: /problems');
     try {
         const user = await getUserFromCookie(req);
-        console.log('ユーザー:', user ? user.username : 'なし');
-        if (!user || !user.username) {
-            console.log('ログインしていないのでリダイレクト');
-            return res.redirect('/login');
-        }
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
-        console.log('コンテスト数:', contests.length);
         const nav = generateNav(user);
         const endedContests = contests.filter((contest) => !isContestNotEnded(contest));
 
@@ -1486,7 +1368,7 @@ app.get('/problems', async (req, res) => {
 app.get('/admin/contest-details/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1496,9 +1378,7 @@ app.get('/admin/contest-details/:contestId', async (req, res) => {
 
         const contest = contests[contestId];
         if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+            return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
         const problemIds = generateProblemIds(contest.problemCount);
@@ -1525,9 +1405,7 @@ app.get('/admin/contest-details/:contestId', async (req, res) => {
                 </form>
                 <h3>講評</h3>
                 <form method="POST" action="/admin/contest-details/${contestId}/update-review">
-                    <textarea name="review" placeholder="コンテストの講評">${
-                        contest.review || ''
-                    }</textarea><br>
+                    <textarea name="review" placeholder="コンテストの講評">${contest.review || ''}</textarea><br>
                     <button type="submit">講評を保存</button>
                 </form>
                 <table class="problem-table">
@@ -1565,7 +1443,7 @@ app.get('/admin/contest-details/:contestId', async (req, res) => {
 app.post('/admin/contest-details/:contestId/update-review', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1575,9 +1453,7 @@ app.post('/admin/contest-details/:contestId/update-review', async (req, res) => 
 
         const contest = contests[contestId];
         if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+            return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
         contest.review = req.body.review || '';
@@ -1592,7 +1468,7 @@ app.post('/admin/contest-details/:contestId/update-review', async (req, res) => 
 app.post('/admin/contest-details/:contestId/add-writer-tester', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1602,9 +1478,7 @@ app.post('/admin/contest-details/:contestId/add-writer-tester', async (req, res)
 
         const contest = contests[contestId];
         if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+            return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
         const users = await loadUsers();
@@ -1636,7 +1510,7 @@ app.post('/admin/contest-details/:contestId/add-writer-tester', async (req, res)
 app.get('/admin/edit-contest/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1646,9 +1520,7 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
 
         const contest = contests[contestId];
         if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+            return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
         const problemIds = generateProblemIds(contest.problemCount);
@@ -1688,13 +1560,13 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                                     <input type="text" name="writer_${problemId}" placeholder="作成者" value="${
                                         problem.writer || ''
                                     }" required><br>
-                                    <textarea name="content_${problemId}" placeholder="問題内容 (TeX使用可, $$...$$で囲む。複数行は\\を使用。左揃えにする場合は\\begin{flalign}を使用)">${
+                                    <textarea name="content_${problemId}" placeholder="問題内容 (TeX使用可)">${
                                         problem.content || ''
                                     }</textarea><br>
                                     <label>正解:</label><br>
                                     <input type="text" name="correctAnswer_${problemId}" value="${
                                         problem.correctAnswer || ''
-                                    }" placeholder="正解を入力 (例: 42, x=5)"><br>
+                                    }" placeholder="正解を入力"><br>
                                     <label>画像URL (手動入力):</label><br>
                                     <input type="text" name="image_${problemId}" value="${
                                         problem.image || ''
@@ -1718,7 +1590,7 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
 app.post('/admin/edit-contest/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1728,9 +1600,7 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
 
         const contest = contests[contestId];
         if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+            return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
         const testers = req.body.testers
@@ -1743,7 +1613,7 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
             .filter((w) => w);
         const title = req.body.title || contest.title;
         const description = req.body.description || contest.description;
-        const submissionLimit = parseInt(req.body.submissionLimit) || 10; // デフォルト10
+        const submissionLimit = parseInt(req.body.submissionLimit) || 10;
         const problemIds = generateProblemIds(contest.problemCount);
 
         const problems = problemIds.map((problemId) => {
@@ -1776,7 +1646,7 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
 app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1787,9 +1657,7 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
 
         const contest = contests[contestId];
         if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+            return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
         const problem =
@@ -1805,6 +1673,10 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
         displayContent = displayContent.replace(/\n(?![ \t]*\$)/g, '<br>');
         displayContent = wrapWithFlalign(displayContent);
 
+        let displayExplanation = problem.explanation || '未設定';
+        displayExplanation = displayExplanation.replace(/\n(?![ \t]*\$)/g, '<br>');
+        displayExplanation = wrapWithFlalign(displayExplanation);
+
         const nav = generateNav(user);
         const content = `
             <section class="problem-section">
@@ -1819,24 +1691,27 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                             ? `<p>画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>`
                             : '<p>画像: 未設定</p>'
                     }
-                    <p>解説: <span class="math-tex">${
-                        problem.explanation ? wrapWithFlalign(problem.explanation.replace(/\n(?![ \t]*\$)/g, '<br>')) : '未設定'
-                    }</span></p>
+                    <p>解説: <span class="math-tex">${displayExplanation}</span></p>
                 </div>
-                <form method="POST" action="/admin/problem/${contestId}/${problemId}" enctype="multipart/form-data">
-                    <label>問題内容 (TeX使用可, $$...$$で囲む。複数行は\\を使用。左揃えにする場合は\\begin{flalign}を使用):</label><br>
+                <h3>問題内容の編集</h3>
+                <form method="POST" action="/admin/problem/${contestId}/${problemId}">
+                    <label>問題内容 (TeX使用可, $$...$$で囲む):</label><br>
                     <textarea name="content" placeholder="問題内容">${problem.content || ''}</textarea><br>
                     <label>点数:</label><br>
                     <input type="number" name="score" value="${problem.score || 100}" required><br>
                     <label>作成者:</label><br>
                     <input type="text" name="writer" value="${problem.writer || ''}" placeholder="作成者"><br>
                     <label>正解:</label><br>
-                    <input type="text" name="correctAnswer" value="${problem.correctAnswer || ''}" placeholder="正解を入力 (例: 42, x=5)"><br>
+                    <input type="text" name="correctAnswer" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
                     <label>解説 (TeX使用可):</label><br>
                     <textarea name="explanation" placeholder="解答解説">${problem.explanation || ''}</textarea><br>
-                    <label>画像アップロード:</label><br>
-                    <input type="file" name="image" accept="image/*"><br>
                     <button type="submit">保存</button>
+                </form>
+                <h3>画像アップロード</h3>
+                <form method="POST" action="/admin/problem/${contestId}/${problemId}/upload-image" enctype="multipart/form-data">
+                    <label>画像を選択:</label><br>
+                    <input type="file" name="image" accept="image/*" required><br>
+                    <button type="submit">画像をアップロード</button>
                 </form>
                 <p><a href="/admin/contest-details/${contestId}">コンテスト詳細に戻る</a></p>
             </section>
@@ -1848,10 +1723,11 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     }
 });
 
+// 問題内容の保存
 app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
@@ -1862,9 +1738,7 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
 
         const contest = contests[contestId];
         if (!canManageContest(user, contest)) {
-            return res
-                .status(403)
-                .send('このコンテストを管理する権限がありません <a href="/contests">戻る</a>');
+            return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
         const problem = contest.problems.find((p) => p.id === problemId);
@@ -1872,39 +1746,66 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
             return res.status(404).send('無効な問題IDです');
         }
 
-        const form = formidable({ multiples: true });
-        form.parse(req, async (err, fields, files) => {
-            if (err) {
-                console.error('フォーム解析エラー:', err);
-                return res.status(500).send("フォーム解析エラーが発生しました");
-            }
+        problem.content = req.body.content || problem.content || '';
+        problem.score = parseInt(req.body.score) || problem.score || 100;
+        problem.writer = req.body.writer || problem.writer || '';
+        problem.correctAnswer = req.body.correctAnswer || problem.correctAnswer || '';
+        problem.explanation = req.body.explanation || problem.explanation || '';
 
-            problem.content = fields.content || problem.content || '';
-            problem.score = parseInt(fields.score) || problem.score || 100;
-            problem.writer = fields.writer || problem.writer || '';
-            problem.correctAnswer = fields.correctAnswer || problem.correctAnswer || '';
-            problem.explanation = fields.explanation || problem.explanation || ''; // 解説を更新
-
-            // 画像アップロード処理
-            if (files.image && files.image.size > 0) {
-                const filePath = files.image.filepath || files.image.path; // formidableのバージョン依存を考慮
-                try {
-                    const result = await cloudinary.uploader.upload(filePath, {
-                        folder: 'contest_problems',
-                    });
-                    problem.image = result.secure_url;
-                    console.log('画像アップロード成功:', problem.image);
-                } catch (uploadErr) {
-                    console.error('Cloudinaryアップロードエラー:', uploadErr);
-                    return res.status(500).send("画像アップロードに失敗しました");
-                }
-            }
-
-            await saveContests(contests);
-            res.redirect(`/admin/problem/${contestId}/${problemId}`);
-        });
+        await saveContests(contests);
+        res.redirect(`/admin/problem/${contestId}/${problemId}`);
     } catch (err) {
         console.error('問題更新処理エラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+// 画像アップロード処理
+app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user) return res.redirect('/login');
+        const contests = await loadContests();
+        const contestId = parseInt(req.params.contestId);
+        const problemId = req.params.problemId;
+
+        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+            return res.status(404).send('無効なコンテストIDです');
+        }
+
+        const contest = contests[contestId];
+        if (!canManageContest(user, contest)) {
+            return res.status(403).send('このコンテストを管理する権限がありません');
+        }
+
+        const problem = contest.problems.find((p) => p.id === problemId);
+        if (!problem) {
+            return res.status(404).send('無効な問題IDです');
+        }
+
+        if (!req.files || !req.files.image) {
+            return res.status(400).send('画像ファイルが選択されていません');
+        }
+
+        const file = req.files.image;
+        console.log('アップロードされたファイル:', file); // デバッグ用ログ
+
+        try {
+            const result = await cloudinary.uploader.upload(file.tempFilePath, {
+                folder: 'contest_problems',
+                public_id: `${contestId}_${problemId}_${Date.now()}`,
+            });
+            problem.image = result.secure_url;
+            console.log('画像アップロード成功:', problem.image); // 成功ログ
+        } catch (uploadErr) {
+            console.error('Cloudinaryアップロードエラー:', uploadErr);
+            return res.status(500).send('画像アップロードに失敗しました');
+        }
+
+        await saveContests(contests);
+        res.redirect(`/admin/problem/${contestId}/${problemId}`);
+    } catch (err) {
+        console.error('画像アップロード処理エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
@@ -1913,7 +1814,7 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
 app.get('/admin/users', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.isAdmin) return res.redirect('/login');
         const users = await loadUsers();
         const nav = generateNav(user);
         const content = `
@@ -1953,7 +1854,7 @@ app.get('/admin/users', async (req, res) => {
 app.post('/admin/toggle-admin', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.isAdmin) return res.redirect('/login');
         const { username } = req.body;
         const users = await loadUsers();
         const targetUser = users.find((u) => u.username === username);
@@ -1971,7 +1872,7 @@ app.post('/admin/toggle-admin', async (req, res) => {
 app.post('/admin/delete-user', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username || !user.isAdmin) return res.redirect('/login');
+        if (!user || !user.isAdmin) return res.redirect('/login');
         const { username } = req.body;
         const users = await loadUsers();
         const updatedUsers = users.filter((u) => u.username !== username);
