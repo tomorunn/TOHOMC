@@ -1339,12 +1339,20 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
 
 // ルート：過去の問題
 app.get('/problems', async (req, res) => {
+    console.log('リクエスト受信: /problems'); // ログ追加
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        console.log('ユーザー:', user ? user.username : 'なし');
+        if (!user) {
+            console.log('ログインしていないのでリダイレクト');
+            return res.redirect('/login');
+        }
         const contests = await loadContests();
+        console.log('コンテスト数:', contests.length);
         const nav = generateNav(user);
         const endedContests = contests.filter((contest) => !isContestNotEnded(contest));
+        // 以下略
+        // 以下略
 
         const content = `
             <section class="hero">
