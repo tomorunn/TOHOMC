@@ -6,6 +6,67 @@ const { MongoClient } = require('mongodb');
 
 const app = express();
 
+require('dotenv').config();
+const cloudinary = require('cloudinary').v2;
+const fileUpload = require('express-fileupload');
+
+// Cloudinaryの設定
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+app.post('/admin/problem/:contestId/:problemId/upload', async (req, res) => {
+    try {
+      const user = await getUserFromCookie(req);
+      if (!user || !user.isAdmin) return res.redirect('/login');
+  
+      const contestId = parseInt(req.params.contestId);
+      const problemId = req.params.problemId;
+      const contests = await loadContests();
+  
+      if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+        return res.status(404).send('無効なコンテストIDです');
+      }
+  
+      const contest = contests[contestId];
+      const problemIndex = contest.problems.findIndex(p => p.id === problemId);
+  
+      if (problemIndex === -1) {
+        return res.status(404).send('問題が見つかりません');
+      }
+  
+      // ファイルがアップロードされたか確認
+      if (!req.files || !req.files.image) {
+        return res.status(400).send('画像ファイルが選択されていません');
+      }
+  
+      const imageFile = req.files.image;
+  
+      // Cloudinaryに画像をアップロード
+      const uploadResult = await cloudinary.uploader.upload(imageFile.tempFilePath, {
+        upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
+        folder: `contests/${contestId}/problems/${problemId}`, // フォルダ構造で整理
+      });
+  
+      // 問題のimageフィールドを更新
+      contest.problems[problemIndex].image = uploadResult.secure_url;
+  
+      await saveContests(contests);
+  
+      res.redirect(`/admin/problem/${contestId}/${problemId}`);
+    } catch (err) {
+      console.error('画像アップロードエラー:', err);
+      res.status(500).send('サーバーエラーが発生しました: ' + err.message);
+    }
+  });
+
+app.use(fileUpload({
+    useTempFiles: true,
+    tempFileDir: '/tmp/',
+  }));
+
 // ミドルウェアの設定
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -1763,16 +1824,18 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                     <input type="text" name="correctAnswer" value="${
                         problem.correctAnswer || ''
                     }" placeholder="正解を入力 (例: 42, x=5)"><br>
-                    <label>画像URL (手動入力):</label><br>
+                    <label>画像URL (手動入力またはアップロード後自動反映):</label><br>
                     <input type="text" name="image" value="${
                         problem.image || ''
                     }" placeholder="画像のURLを入力"><br>
-                    <p style="color: red;">画像アップロードは現在サポートされていません。外部ストレージサービス（例: Cloudinary）を使用してURLを保存してください。</p>
                     <label>解答解説 (TeX使用可):</label><br>
-                    <textarea name="explanation">${
-                        problem.explanation || ''
-                    }</textarea><br>
+                    <textarea name="explanation">${problem.explanation || ''}</textarea><br>
                     <button type="submit">保存</button>
+                </form>
+                <form method="POST" action="/admin/problem/${contestId}/${problemId}/upload" enctype="multipart/form-data" class="upload-form">
+                    <label>画像をアップロード:</label><br>
+                    <input type="file" name="image" accept="image/*" required><br>
+                    <button type="submit">アップロード</button>
                 </form>
                 <p><a href="/admin/contest-details/${contestId}">戻る</a></p>
             </section>
@@ -1783,6 +1846,16 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
+
+if (!imageFile.mimetype.startsWith('image/')) {
+    return res.status(400).send('画像ファイルのみアップロード可能です');
+  }
+
+  const uploadResult = await cloudinary.uploader.upload(imageFile.tempFilePath, {
+    upload_preset: process.env.CLOUDINARY_UPLOAD_PRESET,
+    folder: `contests/${contestId}/problems/${problemId}`,
+    transformation: { width: 800, crop: "scale" },
+  });
 
 app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
