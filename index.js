@@ -1926,7 +1926,7 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
                 const contests = await loadContests();
                 const contestId = parseInt(req.params.contestId);
                 const problemId = req.params.problemId;
-                const { imageType } = req.body; // 'image' または 'explanationImage' を受け取る
+                const { imageType } = req.body;
         
                 if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
                     return res.status(404).send('無効なコンテストIDです');
@@ -1942,23 +1942,36 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
                     return res.status(404).send('無効な問題IDです');
                 }
         
-                if (imageType === 'image' && problem.image && problem.imagePublicId) {
-                    // Cloudinaryから問題画像を削除
-                    await cloudinary.uploader.destroy(`contest_${contestId}/${problem.imagePublicId}`);
-                    problem.image = ''; // URLをクリア
-                    problem.imagePublicId = ''; // public_idをクリア
-                    console.log(`問題画像を削除しました: ${problemId}`);
-                } else if (imageType === 'explanationImage' && problem.explanationImage && problem.explanationImagePublicId) {
-                    // Cloudinaryから解説画像を削除
-                    await cloudinary.uploader.destroy(`contest_${contestId}/${problem.explanationImagePublicId}`);
-                    problem.explanationImage = ''; // URLをクリア
-                    problem.explanationImagePublicId = ''; // public_idをクリア
-                    console.log(`解説画像を削除しました: ${problemId}`);
+                const extractPublicIdFromUrl = (url) => {
+                    if (!url) return null;
+                    const match = url.match(/\/contest_\d+\/[^\/]+\.(jpg|png|jpeg|gif)$/i);
+                    if (match) {
+                        const path = match[0].replace(/\.(jpg|png|jpeg|gif)$/i, '');
+                        return path.substring(1); // 先頭の/を削除
+                    }
+                    return null;
+                };
+        
+                if (imageType === 'image' && problem.image) {
+                    let publicId = problem.imagePublicId || extractPublicIdFromUrl(problem.image);
+                    if (publicId) {
+                        await cloudinary.uploader.destroy(publicId);
+                        console.log(`問題画像を削除しました: ${publicId}`);
+                    }
+                    problem.image = '';
+                    problem.imagePublicId = '';
+                } else if (imageType === 'explanationImage' && problem.explanationImage) {
+                    let publicId = problem.explanationImagePublicId || extractPublicIdFromUrl(problem.explanationImage);
+                    if (publicId) {
+                        await cloudinary.uploader.destroy(publicId);
+                        console.log(`解説画像を削除しました: ${publicId}`);
+                    }
+                    problem.explanationImage = '';
+                    problem.explanationImagePublicId = '';
                 } else {
                     return res.status(400).send('削除する画像がありません');
                 }
         
-                // MongoDBに更新を保存
                 await saveContests(contests);
                 res.redirect(`/admin/problem/${contestId}/${problemId}`);
             } catch (err) {
