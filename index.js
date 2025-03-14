@@ -1887,6 +1887,10 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
     }
 });
 
+// （既存のインポートや設定はそのまま）
+
+// （既存のインポートや設定はそのまま）
+
 // ルート：問題詳細（管理者）
 app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
@@ -1912,6 +1916,8 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
             image: '',
             explanation: '',
             explanationImage: '',
+            imagePublicId: '', // Cloudinaryのpublic_idを保存
+            explanationImagePublicId: '',
         };
 
         let displayContent = problem.content || '未設定';
@@ -1983,7 +1989,7 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
     }
 });
 
-// 問題内容の保存
+// 問題内容の保存（画像フィールドを上書きしないように修正）
 app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -2003,16 +2009,25 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
 
         let problem = contest.problems.find((p) => p.id === problemId);
         if (!problem) {
-            problem = { id: problemId, image: '', explanationImage: '' };
+            problem = { id: problemId, image: '', explanationImage: '', imagePublicId: '', explanationImagePublicId: '' };
             contest.problems.push(problem);
         }
+
+        // 既存の画像フィールドを保持
+        const existingImage = problem.image;
+        const existingExplanationImage = problem.explanationImage;
+        const existingImagePublicId = problem.imagePublicId;
+        const existingExplanationImagePublicId = problem.explanationImagePublicId;
 
         problem.content = req.body.content || '';
         problem.score = parseInt(req.body.score) || 100;
         problem.writer = req.body.writer || '';
         problem.correctAnswer = req.body.correctAnswer || '';
         problem.explanation = req.body.explanation || '';
-        // image と explanationImage はこのルートでは更新しない（アップロード専用ルートで処理）
+        problem.image = existingImage; // 既存の画像URLを保持
+        problem.explanationImage = existingExplanationImage;
+        problem.imagePublicId = existingImagePublicId;
+        problem.explanationImagePublicId = existingExplanationImagePublicId;
 
         await saveContests(contests);
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
@@ -2021,10 +2036,6 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
-
-const { promisify } = require('util');
-const stream = require('stream');
-const pipelineAsync = promisify(stream.pipeline);
 
 // 画像アップロード処理（Cloudinaryを使用）
 app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) => {
@@ -2055,107 +2066,97 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
 
         const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
+        // 問題画像のアップロード
         if (req.files && req.files.image) {
             const imageFile = req.files.image;
             if (imageFile.size > MAX_FILE_SIZE) {
                 return res.status(400).send('問題画像のサイズが大きすぎます（最大5MB）');
             }
-            const imagePublicId = `${problemId}_image_${Date.now()}`; // public_idを生成
+            const imagePublicId = `contest_${contestId}/${problemId}_image_${Date.now()}`;
             const result = await cloudinary.uploader.upload(imageFile.tempFilePath, {
                 folder: `contest_${contestId}`,
                 public_id: imagePublicId,
             });
-            problem.image = result.secure_url; // URLを保存
-            problem.imagePublicId = `${contestId}_${imagePublicId}`; // public_idを保存（フォルダ名を含む）
+            problem.image = result.secure_url;
+            problem.imagePublicId = imagePublicId;
             console.log('問題画像アップロード成功:', problem.image);
         }
-        
+
+        // 解説画像のアップロード
         if (req.files && req.files.explanationImage) {
             const explanationImageFile = req.files.explanationImage;
             if (explanationImageFile.size > MAX_FILE_SIZE) {
                 return res.status(400).send('解説画像のサイズが大きすぎます（最大5MB）');
             }
-            const explanationPublicId = `${problemId}_explanation_${Date.now()}`; // public_idを生成
+            const explanationPublicId = `contest_${contestId}/${problemId}_explanation_${Date.now()}`;
             const result = await cloudinary.uploader.upload(explanationImageFile.tempFilePath, {
                 folder: `contest_${contestId}`,
                 public_id: explanationPublicId,
             });
-            problem.explanationImage = result.secure_url; // URLを保存
-            problem.explanationImagePublicId = `${contestId}_${explanationPublicId}`; // public_idを保存
+            problem.explanationImage = result.secure_url;
+            problem.explanationImagePublicId = explanationPublicId;
             console.log('解説画像アップロード成功:', problem.explanationImage);
         }
 
-        app.post('/admin/problem/:contestId/:problemId/remove-image', async (req, res) => {
-            try {
-                const user = await getUserFromCookie(req);
-                if (!user) return res.redirect('/login');
-                const contests = await loadContests();
-                const contestId = parseInt(req.params.contestId);
-                const problemId = req.params.problemId;
-                const { imageType } = req.body;
-        
-                if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-                    return res.status(404).send('無効なコンテストIDです');
-                }
-        
-                const contest = contests[contestId];
-                if (!canManageContest(user, contest)) {
-                    return res.status(403).send('このコンテストを管理する権限がありません');
-                }
-        
-                const problem = contest.problems.find((p) => p.id === problemId);
-                if (!problem) {
-                    return res.status(404).send('無効な問題IDです');
-                }
-        
-                const extractPublicIdFromUrl = (url) => {
-                    if (!url) return null;
-                    const match = url.match(/\/contest_\d+\/[^\/]+\.(jpg|png|jpeg|gif)$/i);
-                    if (match) {
-                        const path = match[0].replace(/\.(jpg|png|jpeg|gif)$/i, '');
-                        return path.substring(1); // 先頭の/を削除
-                    }
-                    return null;
-                };
-        
-                if (imageType === 'image' && problem.image) {
-                    let publicId = problem.imagePublicId || extractPublicIdFromUrl(problem.image);
-                    if (publicId) {
-                        await cloudinary.uploader.destroy(publicId);
-                        console.log(`問題画像を削除しました: ${publicId}`);
-                    }
-                    problem.image = '';
-                    problem.imagePublicId = '';
-                } else if (imageType === 'explanationImage' && problem.explanationImage) {
-                    let publicId = problem.explanationImagePublicId || extractPublicIdFromUrl(problem.explanationImage);
-                    if (publicId) {
-                        await cloudinary.uploader.destroy(publicId);
-                        console.log(`解説画像を削除しました: ${publicId}`);
-                    }
-                    problem.explanationImage = '';
-                    problem.explanationImagePublicId = '';
-                } else {
-                    return res.status(400).send('削除する画像がありません');
-                }
-        
-                await saveContests(contests);
-                res.redirect(`/admin/problem/${contestId}/${problemId}`);
-            } catch (err) {
-                console.error('画像削除エラー:', err);
-                res.status(500).send(`サーバーエラーが発生しました: ${err.message}`);
-            }
-        });
-
-        // MongoDB に保存
         await saveContests(contests);
-        console.log('問題データ更新成功:', problem);
-
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
     } catch (err) {
         console.error('画像アップロード処理エラー:', err);
         res.status(500).send(`サーバーエラーが発生しました: ${err.message}`);
     }
 });
+
+// 画像削除処理（独立したルートとして定義）
+app.post('/admin/problem/:contestId/:problemId/remove-image', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user) return res.redirect('/login');
+        const contests = await loadContests();
+        const contestId = parseInt(req.params.contestId);
+        const problemId = req.params.problemId;
+        const { imageType } = req.body;
+
+        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+            return res.status(404).send('無効なコンテストIDです');
+        }
+
+        const contest = contests[contestId];
+        if (!canManageContest(user, contest)) {
+            return res.status(403).send('このコンテストを管理する権限がありません');
+        }
+
+        const problem = contest.problems.find((p) => p.id === problemId);
+        if (!problem) {
+            return res.status(404).send('無効な問題IDです');
+        }
+
+        if (imageType === 'image' && problem.image) {
+            if (problem.imagePublicId) {
+                await cloudinary.uploader.destroy(problem.imagePublicId);
+                console.log(`問題画像を削除しました: ${problem.imagePublicId}`);
+            }
+            problem.image = '';
+            problem.imagePublicId = '';
+        } else if (imageType === 'explanationImage' && problem.explanationImage) {
+            if (problem.explanationImagePublicId) {
+                await cloudinary.uploader.destroy(problem.explanationImagePublicId);
+                console.log(`解説画像を削除しました: ${problem.explanationImagePublicId}`);
+            }
+            problem.explanationImage = '';
+            problem.explanationImagePublicId = '';
+        } else {
+            return res.status(400).send('削除する画像がありません');
+        }
+
+        await saveContests(contests);
+        res.redirect(`/admin/problem/${contestId}/${problemId}`);
+    } catch (err) {
+        console.error('画像削除エラー:', err);
+        res.status(500).send(`サーバーエラーが発生しました: ${err.message}`);
+    }
+});
+
+// （他のルートはそのまま）
 
 // ルート：ユーザー管理ページ
 app.get('/admin/users', async (req, res) => {
