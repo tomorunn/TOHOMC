@@ -1459,6 +1459,11 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
                 <h2>${contest.title} - 問題 ${problemId} 解答解説</h2>
                 <div class="problem-display">
                     <p>解説: <span class="math-tex">${displayExplanation}</span></p>
+                    ${
+                        problem.explanationImage
+                            ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px;"></p>`
+                            : '<p>解説画像: 未設定</p>'
+                    }
                 </div>
                 <p><a href="/contest/${contestId}/submit/${problemId}">問題に戻る</a></p>
             </section>
