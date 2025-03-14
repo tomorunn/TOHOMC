@@ -5,10 +5,20 @@ const cookieParser = require('cookie-parser');
 const { MongoClient } = require('mongodb');
 const fileUpload = require('express-fileupload');
 const fs = require('fs').promises; // ファイルシステムモジュール
+const cloudinary = require('cloudinary').v2;
 
 const app = express();
 
+
 require('dotenv').config();
+
+// Cloudinaryの設定をコードの先頭に追加（app.listenの前あたりに記述）
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 
 // ミドルウェアの設定（順序が重要）
 app.use(express.urlencoded({ extended: true }));
@@ -1830,12 +1840,11 @@ app.post('/admin/problem/:contestId/:problemId', async (req, res) => {
     }
 });
 
-
 const { promisify } = require('util');
 const stream = require('stream');
 const pipelineAsync = promisify(stream.pipeline);
 
-// 画像アップロード処理（最適化版）
+// 画像アップロード処理（Cloudinaryを使用）
 app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -1864,34 +1873,38 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
 
         const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-        // 問題画像の処理
+        // 問題画像のアップロード（Cloudinaryを使用）
         if (req.files && req.files.image) {
             const imageFile = req.files.image;
             if (imageFile.size > MAX_FILE_SIZE) {
                 return res.status(400).send('問題画像のサイズが大きすぎます（最大5MB）');
             }
-            const imageFileName = `${contestId}_${problemId}_image_${Date.now()}_${imageFile.name}`;
-            const imageFilePath = path.join(uploadDir, imageFileName);
-            await imageFile.mv(imageFilePath); // mv() でファイルを移動
-            problem.image = `/uploads/${imageFileName}`;
+            // Cloudinaryにアップロード（一時ファイルを使用）
+            const result = await cloudinary.uploader.upload(imageFile.tempFilePath, {
+                folder: `contest_${contestId}`, // フォルダ名をコンテストIDで整理
+                public_id: `${problemId}_image_${Date.now()}`, // ユニークなファイル名
+            });
+            problem.image = result.secure_url; // Cloudinaryから返されたURLを保存
             console.log('問題画像アップロード成功:', problem.image);
         }
 
-        // 解説画像の処理
+        // 解説画像のアップロード（Cloudinaryを使用）
         if (req.files && req.files.explanationImage) {
             const explanationImageFile = req.files.explanationImage;
             if (explanationImageFile.size > MAX_FILE_SIZE) {
                 return res.status(400).send('解説画像のサイズが大きすぎます（最大5MB）');
             }
-            const explanationFileName = `${contestId}_${problemId}_explanation_${Date.now()}_${explanationImageFile.name}`;
-            const explanationFilePath = path.join(uploadDir, explanationFileName);
-            await explanationImageFile.mv(explanationFilePath); // mv() でファイルを移動
-            problem.explanationImage = `/uploads/${explanationFileName}`;
+            // Cloudinaryにアップロード（一時ファイルを使用）
+            const result = await cloudinary.uploader.upload(explanationImageFile.tempFilePath, {
+                folder: `contest_${contestId}`, // フォルダ名をコンテストIDで整理
+                public_id: `${problemId}_explanation_${Date.now()}`, // ユニークなファイル名
+            });
+            problem.explanationImage = result.secure_url; // Cloudinaryから返されたURLを保存
             console.log('解説画像アップロード成功:', problem.explanationImage);
         }
 
         // MongoDB に保存
-        await saveContests(contests); // contests 全体を保存する既存関数を利用
+        await saveContests(contests);
         console.log('問題データ更新成功:', problem);
 
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
