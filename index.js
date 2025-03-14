@@ -1758,42 +1758,58 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
 
         const nav = generateNav(user);
         const content = `
-            <section class="problem-section">
-                <h2>${contest.title} - 問題 ${problemId}</h2>
-                <div class="problem-display">
-                    <p>内容: <span class="math-tex">${displayContent}</span></p>
-                    <p>点数: ${problem.score}</p>
-                    <p>作成者: ${problem.writer || '未設定'}</p>
-                    <p>正解: ${problem.correctAnswer || '未設定'}</p>
-                    ${problem.image ? `<p>問題画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>` : '<p>問題画像: 未設定</p>'}
-                    <p>解説: <span class="math-tex">${displayExplanation}</span></p>
-                    ${problem.explanationImage ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px;"></p>` : '<p>解説画像: 未設定</p>'}
-                </div>
-                <h3>問題内容の編集</h3>
-                <form method="POST" action="/admin/problem/${contestId}/${problemId}">
-                    <label>問題内容 (TeX使用可, $$...$$で囲む):</label><br>
-                    <textarea name="content" placeholder="問題内容">${problem.content || ''}</textarea><br>
-                    <label>点数:</label><br>
-                    <input type="number" name="score" value="${problem.score || 100}" required><br>
-                    <label>作成者:</label><br>
-                    <input type="text" name="writer" value="${problem.writer || ''}" placeholder="作成者"><br>
-                    <label>正解:</label><br>
-                    <input type="text" name="correctAnswer" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
-                    <label>解説 (TeX使用可):</label><br>
-                    <textarea name="explanation" placeholder="解答解説">${problem.explanation || ''}</textarea><br>
-                    <button type="submit">保存</button>
-                </form>
-                <h3>画像アップロード</h3>
-                <form method="POST" action="/admin/problem/${contestId}/${problemId}/upload-image" enctype="multipart/form-data">
-                    <label>問題画像を選択:</label><br>
-                    <input type="file" name="image" accept="image/*"><br>
-                    <label>解説画像を選択:</label><br>
-                    <input type="file" name="explanationImage" accept="image/*"><br>
-                    <button type="submit">画像をアップロード</button>
-                </form>
-                <p><a href="/admin/contest-details/${contestId}">コンテスト詳細に戻る</a></p>
-            </section>
-        `;
+        <section class="problem-section">
+            <h2>${contest.title} - 問題 ${problemId}</h2>
+            <div class="problem-display">
+                <p>内容: <span class="math-tex">${displayContent}</span></p>
+                <p>点数: ${problem.score}</p>
+                <p>作成者: ${problem.writer || '未設定'}</p>
+                <p>正解: ${problem.correctAnswer || '未設定'}</p>
+                ${
+                    problem.image 
+                    ? `<p>問題画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>
+                       <form method="POST" action="/admin/problem/${contestId}/${problemId}/remove-image" style="display:inline;">
+                           <input type="hidden" name="imageType" value="image">
+                           <button type="submit" onclick="return confirm('問題画像を取り消しますか？')">問題画像を取り消す</button>
+                       </form>`
+                    : '<p>問題画像: 未設定</p>'
+                }
+                <p>解説: <span class="math-tex">${displayExplanation}</span></p>
+                ${
+                    problem.explanationImage 
+                    ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px;"></p>
+                       <form method="POST" action="/admin/problem/${contestId}/${problemId}/remove-image" style="display:inline;">
+                           <input type="hidden" name="imageType" value="explanationImage">
+                           <button type="submit" onclick="return confirm('解説画像を取り消しますか？')">解説画像を取り消す</button>
+                       </form>`
+                    : '<p>解説画像: 未設定</p>'
+                }
+            </div>
+            <h3>問題内容の編集</h3>
+            <form method="POST" action="/admin/problem/${contestId}/${problemId}">
+                <label>問題内容 (TeX使用可, $$...$$で囲む):</label><br>
+                <textarea name="content" placeholder="問題内容">${problem.content || ''}</textarea><br>
+                <label>点数:</label><br>
+                <input type="number" name="score" value="${problem.score || 100}" required><br>
+                <label>作成者:</label><br>
+                <input type="text" name="writer" value="${problem.writer || ''}" placeholder="作成者"><br>
+                <label>正解:</label><br>
+                <input type="text" name="correctAnswer" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
+                <label>解説 (TeX使用可):</label><br>
+                <textarea name="explanation" placeholder="解答解説">${problem.explanation || ''}</textarea><br>
+                <button type="submit">保存</button>
+            </form>
+            <h3>画像アップロード</h3>
+            <form method="POST" action="/admin/problem/${contestId}/${problemId}/upload-image" enctype="multipart/form-data">
+                <label>問題画像を選択:</label><br>
+                <input type="file" name="image" accept="image/*"><br>
+                <label>解説画像を選択:</label><br>
+                <input type="file" name="explanationImage" accept="image/*"><br>
+                <button type="submit">画像をアップロード</button>
+            </form>
+            <p><a href="/admin/contest-details/${contestId}">コンテスト詳細に戻る</a></p>
+        </section>
+    `;
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('問題詳細（管理者）エラー:', err);
@@ -1873,35 +1889,83 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
 
         const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-        // 問題画像のアップロード（Cloudinaryを使用）
         if (req.files && req.files.image) {
             const imageFile = req.files.image;
             if (imageFile.size > MAX_FILE_SIZE) {
                 return res.status(400).send('問題画像のサイズが大きすぎます（最大5MB）');
             }
-            // Cloudinaryにアップロード（一時ファイルを使用）
+            const imagePublicId = `${problemId}_image_${Date.now()}`; // public_idを生成
             const result = await cloudinary.uploader.upload(imageFile.tempFilePath, {
-                folder: `contest_${contestId}`, // フォルダ名をコンテストIDで整理
-                public_id: `${problemId}_image_${Date.now()}`, // ユニークなファイル名
+                folder: `contest_${contestId}`,
+                public_id: imagePublicId,
             });
-            problem.image = result.secure_url; // Cloudinaryから返されたURLを保存
+            problem.image = result.secure_url; // URLを保存
+            problem.imagePublicId = `${contestId}_${imagePublicId}`; // public_idを保存（フォルダ名を含む）
             console.log('問題画像アップロード成功:', problem.image);
         }
-
-        // 解説画像のアップロード（Cloudinaryを使用）
+        
         if (req.files && req.files.explanationImage) {
             const explanationImageFile = req.files.explanationImage;
             if (explanationImageFile.size > MAX_FILE_SIZE) {
                 return res.status(400).send('解説画像のサイズが大きすぎます（最大5MB）');
             }
-            // Cloudinaryにアップロード（一時ファイルを使用）
+            const explanationPublicId = `${problemId}_explanation_${Date.now()}`; // public_idを生成
             const result = await cloudinary.uploader.upload(explanationImageFile.tempFilePath, {
-                folder: `contest_${contestId}`, // フォルダ名をコンテストIDで整理
-                public_id: `${problemId}_explanation_${Date.now()}`, // ユニークなファイル名
+                folder: `contest_${contestId}`,
+                public_id: explanationPublicId,
             });
-            problem.explanationImage = result.secure_url; // Cloudinaryから返されたURLを保存
+            problem.explanationImage = result.secure_url; // URLを保存
+            problem.explanationImagePublicId = `${contestId}_${explanationPublicId}`; // public_idを保存
             console.log('解説画像アップロード成功:', problem.explanationImage);
         }
+
+        app.post('/admin/problem/:contestId/:problemId/remove-image', async (req, res) => {
+            try {
+                const user = await getUserFromCookie(req);
+                if (!user) return res.redirect('/login');
+                const contests = await loadContests();
+                const contestId = parseInt(req.params.contestId);
+                const problemId = req.params.problemId;
+                const { imageType } = req.body; // 'image' または 'explanationImage' を受け取る
+        
+                if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+                    return res.status(404).send('無効なコンテストIDです');
+                }
+        
+                const contest = contests[contestId];
+                if (!canManageContest(user, contest)) {
+                    return res.status(403).send('このコンテストを管理する権限がありません');
+                }
+        
+                const problem = contest.problems.find((p) => p.id === problemId);
+                if (!problem) {
+                    return res.status(404).send('無効な問題IDです');
+                }
+        
+                if (imageType === 'image' && problem.image && problem.imagePublicId) {
+                    // Cloudinaryから問題画像を削除
+                    await cloudinary.uploader.destroy(`contest_${contestId}/${problem.imagePublicId}`);
+                    problem.image = ''; // URLをクリア
+                    problem.imagePublicId = ''; // public_idをクリア
+                    console.log(`問題画像を削除しました: ${problemId}`);
+                } else if (imageType === 'explanationImage' && problem.explanationImage && problem.explanationImagePublicId) {
+                    // Cloudinaryから解説画像を削除
+                    await cloudinary.uploader.destroy(`contest_${contestId}/${problem.explanationImagePublicId}`);
+                    problem.explanationImage = ''; // URLをクリア
+                    problem.explanationImagePublicId = ''; // public_idをクリア
+                    console.log(`解説画像を削除しました: ${problemId}`);
+                } else {
+                    return res.status(400).send('削除する画像がありません');
+                }
+        
+                // MongoDBに更新を保存
+                await saveContests(contests);
+                res.redirect(`/admin/problem/${contestId}/${problemId}`);
+            } catch (err) {
+                console.error('画像削除エラー:', err);
+                res.status(500).send(`サーバーエラーが発生しました: ${err.message}`);
+            }
+        });
 
         // MongoDB に保存
         await saveContests(contests);

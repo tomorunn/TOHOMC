@@ -13,6 +13,7 @@ body {
 h1, h2, h3 {
     color: #2c3e50;
     font-weight: 600;
+    text-align: center; /* 見出しを中央揃えに */
 }
 
 h1 {
@@ -117,6 +118,7 @@ nav {
 
     .nav-menu li {
         margin: 1rem 0;
+        text-align: center; /* モバイルでメニューを中央揃え */
     }
 
     .nav-menu li a {
@@ -139,6 +141,8 @@ main {
     max-width: 1400px;
     margin: 3rem auto;
     padding: 0 1.5rem;
+    display: flex;
+    justify-content: center; /* メインコンテンツを中央に */
 }
 
 .hero {
@@ -146,10 +150,33 @@ main {
     padding: 3rem;
     border-radius: 10px;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+    text-align: center; /* ヒーローセクションを中央揃えに */
+    max-width: 800px; /* 幅を制限してバランスを調整 */
 }
 
 .hero h2 {
     margin-top: 0;
+}
+
+.hero p {
+    font-size: 1.2rem;
+    margin: 1rem 0;
+}
+
+.hero button {
+    background-color: #2980b9;
+    color: #fff;
+    padding: 1rem 2rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.2s ease; /* ホバー時に動きを追加 */
+    font-size: 1.25rem;
+}
+
+.hero button:hover {
+    background-color: #1a5276;
+    transform: scale(1.05); /* ホバー時に少し拡大 */
 }
 
 /* タブ */
@@ -157,6 +184,7 @@ main {
     margin: 1.5rem 0;
     display: flex;
     gap: 1.5rem;
+    justify-content: center; /* タブを中央揃えに */
 }
 
 .tab {
