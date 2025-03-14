@@ -52,7 +52,7 @@ nav {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    position: relative; /* 基準点として残す */
+    position: relative;
 }
 
 .nav-container h1 {
@@ -69,7 +69,6 @@ nav {
     color: #fff;
     cursor: pointer;
     padding: 0;
-    position: relative; /* メニューをこのボタンに依存 */
 }
 
 .nav-menu {
@@ -104,14 +103,13 @@ nav {
         display: none; /* モバイルではデフォルト非表示 */
         flex-direction: column;
         position: absolute;
-        top: 100%; /* ボタンのすぐ下 */
-        left: 0; /* ボタンの左端に揃える */
-        width: 200px; /* 固定幅で調整 */
+        top: calc(100% + 1.5rem); /* ナビゲーションの高さ + padding分 */
+        right: 1.5rem; /* ボタンの右端に合わせる */
+        width: 200px; /* メニューの幅を固定 */
         background-color: #2c3e50;
         padding: 1rem;
         box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
         z-index: 1000;
-        transform: translateX(-50%); /* ボタンの中心を基準に調整 */
     }
 
     .nav-menu.active {
