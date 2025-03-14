@@ -6,50 +6,13 @@
     <title>TOHO Math Contest</title>
     <link rel="stylesheet" href="/style.css">
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <style>
-        .hero {
-            text-align: center;
-            padding: 50px 20px;
-            background-color: #f5f5f5;
-        }
-        .hero h2 {
-            font-size: 2.5em;
-            margin-bottom: 20px;
-            color: #333;
-        }
-        .hero p {
-            font-size: 1.2em;
-            margin-bottom: 30px;
-            color: #666;
-        }
-        .hero button {
-            padding: 10px 20px;
-            font-size: 1.1em;
-            background-color: #008888;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .hero button:hover {
-            background-color: #008888;
-        }
-        footer {
-            text-align: center;
-            padding: 20px;
-            background-color: #333;
-            color: white;
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-        }
-    </style>
 </head>
 <body>
     <nav>
         <div class="nav-container">
             <h1>TOHOMC</h1>
-            <ul>
+            <button class="nav-toggle">☰</button>
+            <ul class="nav-menu">
                 <li><a href="/">ホーム</a></li>
                 <li><a href="/contests">コンテスト</a></li>
                 <li><a href="/problems">PROBLEMS</a></li>
@@ -91,6 +54,11 @@
                 }
             }
         };
+
+        // ナビゲーショントグル用のスクリプト
+        document.querySelector('.nav-toggle').addEventListener('click', () => {
+            document.querySelector('.nav-menu').classList.toggle('active');
+        });
     </script>
 </body>
 </html>
