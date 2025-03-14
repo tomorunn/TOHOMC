@@ -482,8 +482,8 @@ app.get('/admin', async (req, res) => {
                     ${
                         contests
                             .map((contest, index) => {
-                                const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-                                const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+                                const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                 return `
                                     <li>
                                         ${contest.title} (開始: ${start}, 終了: ${end})
@@ -629,8 +629,8 @@ app.get('/contests', async (req, res) => {
                         activeContestsWithIndex.length > 0
                             ? activeContestsWithIndex
                                 .map(({ contest, originalIndex }) => {
-                                    const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-                                    const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+                                    const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                    const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                     const status = isContestStartedOrActive(contest) ? '開催中' : '準備中';
                                     return `
                                         <li>
@@ -884,7 +884,7 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
                                         : '';
                                 return `
                                     <tr>
-                                        <td>${DateTime.fromISO(sub.date, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL)}</td>
+                                        <td>${DateTime.fromISO(sub.date, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm:ss')}</td>
                                         <td>${sub.problemId}</td>
                                         <td>${sub.user}</td>
                                         <td style="${style}">${sub.result}</td>
@@ -1161,13 +1161,13 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
         let displayContent = problem.content || '未設定';
         displayContent = displayContent.replace(/\n(?![ \t]*\$)/g, '<br>');
         displayContent = wrapWithFlalign(displayContent);
-
+    
         const nav = generateNav(user);
         let content = `
             <section class="hero">
                 <h2>${contest.title} - 問題 ${problemId}</h2>
                 <p>終了までの残り時間: <span id="timer" class="timer">${
-                    isContestNotEnded(contest) ? '' : 'Finished'
+                    isContestNotEnded(contest) ? '' : '終了済み'
                 }</span></p>
                 ${
                     isContestNotEnded(contest)
@@ -1186,8 +1186,8 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
                         : ''
                 }
                 <div class="problem-display">
+                    <p>配点: ${problem.score || 100}点</p>
                     <p>内容: <span class="math-tex">${displayContent}</span></p>
-                    <p>点数: ${problem.score}</p>
                     <p>作成者: ${problem.writer || '未設定'}</p>
                     ${
                         problem.image
@@ -1371,8 +1371,8 @@ app.get('/problems', async (req, res) => {
                     ${
                         endedContests
                             .map((contest) => {
-                                const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-                                const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+                                const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                 return `
                                     <li>
                                         <h3>${contest.title}</h3>
@@ -1447,8 +1447,8 @@ app.get('/admin/contest-details/:contestId', async (req, res) => {
         }
 
         const problemIds = generateProblemIds(contest.problemCount);
-        const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
-        const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+        const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+        const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
 
         const nav = generateNav(user);
         const content = `
@@ -1868,7 +1868,7 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
             }
             const imageFileName = `${contestId}_${problemId}_image_${Date.now()}_${imageFile.name}`;
             const imageFilePath = path.join(uploadDir, imageFileName);
-            await pipelineAsync(imageFile.data, require('fs').createWriteStream(imageFilePath));
+            await imageFile.mv(imageFilePath); // mv() でファイルを移動
             problem.image = `/uploads/${imageFileName}`;
             console.log('問題画像アップロード成功:', problem.image);
         }
@@ -1881,29 +1881,19 @@ app.post('/admin/problem/:contestId/:problemId/upload-image', async (req, res) =
             }
             const explanationFileName = `${contestId}_${problemId}_explanation_${Date.now()}_${explanationImageFile.name}`;
             const explanationFilePath = path.join(uploadDir, explanationFileName);
-            await pipelineAsync(explanationImageFile.data, require('fs').createWriteStream(explanationFilePath));
+            await explanationImageFile.mv(explanationFilePath); // mv() でファイルを移動
             problem.explanationImage = `/uploads/${explanationFileName}`;
             console.log('解説画像アップロード成功:', problem.explanationImage);
         }
 
-        // MongoDBの特定ドキュメントを更新
-        const database = await connectToMongo();
-        const collection = database.collection('contests');
-        await collection.updateOne(
-            { _id: contest._id },
-            {
-                $set: {
-                    [`problems.$[elem].image`]: problem.image,
-                    [`problems.$[elem].explanationImage`]: problem.explanationImage,
-                },
-            },
-            { arrayFilters: [{ 'elem.id': problemId }] }
-        );
+        // MongoDB に保存
+        await saveContests(contests); // contests 全体を保存する既存関数を利用
+        console.log('問題データ更新成功:', problem);
 
         res.redirect(`/admin/problem/${contestId}/${problemId}`);
     } catch (err) {
         console.error('画像アップロード処理エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました");
+        res.status(500).send(`サーバーエラーが発生しました: ${err.message}`);
     }
 });
 
