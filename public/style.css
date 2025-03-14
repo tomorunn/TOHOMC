@@ -95,24 +95,24 @@ nav {
 /* モバイル対応 */
 @media (max-width: 768px) {
     .nav-toggle {
-        display: block;
+        display: block; /* モバイルで表示 */
     }
 
     .nav-menu {
-        display: none;
+        display: none; /* モバイルではデフォルト非表示 */
         flex-direction: column;
         position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
+        top: calc(100% - 1.5rem); /* ナビゲーションの上部パディングを考慮して調整 */
+        right: 0; /* 右端に寄せる */
+        width: 200px; /* メニューの幅を固定 */
         background-color: #2c3e50;
-        padding: 1.5rem;
+        padding: 1rem;
         box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
         z-index: 1000;
     }
 
     .nav-menu.active {
-        display: flex;
+        display: flex; /* トグルで表示 */
     }
 
     .nav-menu li {
@@ -126,11 +126,11 @@ nav {
 
 @media (min-width: 769px) {
     .nav-toggle {
-        display: none !important;
+        display: none !important; /* PCでは確実に非表示 */
     }
 
     .nav-menu {
-        display: flex !important;
+        display: flex !important; /* PCでは常に表示 */
     }
 }
 
