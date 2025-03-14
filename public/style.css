@@ -105,11 +105,13 @@ nav {
         position: absolute;
         top: calc(100% + 1.5rem); /* ナビゲーションの高さ + padding分 */
         right: 1.5rem; /* ボタンの右端に合わせる */
-        width: 200px; /* メニューの幅を固定 */
+        left: 1.5rem; /* 左右の余白を揃える */
+        width: calc(100% - 3rem); /* 画面幅から左右のpadding（1.5rem×2）を引いた幅 */
         background-color: #2c3e50;
         padding: 1rem;
         box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
         z-index: 1000;
+        box-sizing: border-box; /* paddingを含めた幅計算 */
     }
 
     .nav-menu.active {
@@ -122,6 +124,9 @@ nav {
 
     .nav-menu li a {
         font-size: 1.25rem;
+        white-space: nowrap; /* テキストが見切れないように折り返しを防ぐ */
+        overflow: hidden; /* 見切れ防止 */
+        text-overflow: ellipsis; /* 長いテキストは省略記号で表示 */
     }
 }
 
