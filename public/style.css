@@ -104,9 +104,9 @@ nav {
         flex-direction: column;
         position: absolute;
         top: calc(100% + 1.5rem); /* ナビゲーションの高さ + padding分 */
-        right: 1.5rem; /* ボタンの右端に合わせる */
-        left: 1.5rem; /* 左右の余白を揃える */
-        width: calc(100% - 3rem); /* 画面幅から左右のpadding（1.5rem×2）を引いた幅 */
+        left: 0; /* 左端から開始 */
+        right: 0; /* 右端まで */
+        width: 100%; /* 画面幅全体を使用 */
         background-color: #2c3e50;
         padding: 1rem;
         box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
@@ -127,6 +127,7 @@ nav {
         white-space: nowrap; /* テキストが見切れないように折り返しを防ぐ */
         overflow: hidden; /* 見切れ防止 */
         text-overflow: ellipsis; /* 長いテキストは省略記号で表示 */
+        padding: 0 1rem; /* 左右に余白を追加して文字を自然に配置 */
     }
 }
 
