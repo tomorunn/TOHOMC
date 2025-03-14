@@ -310,3 +310,13 @@ footer {
     margin-top: 3rem;
     font-size: 1.1rem;
 }
+.calculator {
+    margin: 20px 0;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    width: 250px;
+    background-color: #f9f9f9;
+    float: right; /* 右側に配置 */
+    margin-left: 20px; /* 左側に余白 */
+}

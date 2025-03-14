@@ -1178,201 +1178,247 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
     
         const nav = generateNav(user);
         let content = `
-        <section class="hero">
-            <h2>${contest.title} - 問題 ${problemId}</h2>
-            <p>終了までの残り時間: <span id="timer" class="timer">${
-                isContestNotEnded(contest) ? '' : '終了済み'
-            }</span></p>
+    <section class="hero">
+        <h2>${contest.title} - 問題 ${problemId}</h2>
+        <p>終了までの残り時間: <span id="timer" class="timer">${
+            isContestNotEnded(contest) ? '' : '終了済み'
+        }</span></p>
+        ${
+            isContestNotEnded(contest)
+                ? `
+                    <script>
+                        const endTime = ${endTime};
+                        function updateTimer() {
+                            const now = Date.now();
+                            const timeLeft = Math.max(0, Math.floor((endTime - now) / 1000));
+                            document.getElementById('timer').textContent = formatTime(timeLeft);
+                            if (timeLeft > 0) setTimeout(updateTimer, 1000);
+                        }
+                        updateTimer();
+                    </script>
+                `
+                : ''
+        }
+        <div class="problem-display">
+            <p>配点: ${problem.score || 100}点</p>
+            <p>内容: <span class="math-tex">${displayContent}</span></p>
+            <p>作成者: ${problem.writer || '未設定'}</p>
             ${
-                isContestNotEnded(contest)
-                    ? `
-                        <script>
-                            const endTime = ${endTime};
-                            function updateTimer() {
-                                const now = Date.now();
-                                const timeLeft = Math.max(0, Math.floor((endTime - now) / 1000));
-                                document.getElementById('timer').textContent = formatTime(timeLeft);
-                                if (timeLeft > 0) setTimeout(updateTimer, 1000);
-                            }
-                            updateTimer();
-                        </script>
-                    `
+                problem.image
+                    ? `<p>画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>`
                     : ''
             }
-            <div class="problem-display">
-                <p>配点: ${problem.score || 100}点</p>
-                <p>内容: <span class="math-tex">${displayContent}</span></p>
-                <p>作成者: ${problem.writer || '未設定'}</p>
-                ${
-                    problem.image
-                        ? `<p>画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>`
-                        : ''
-                }
+        </div>
+        <!-- 電卓の追加 -->
+        <div class="calculator">
+            <h3>簡易電卓</h3>
+            <div class="calc-display">
+                <input type="text" id="calcInput" value="0" readonly>
             </div>
-            <!-- 電卓の追加 -->
-            <div class="calculator">
-                <h3>簡易電卓</h3>
-                <div class="calc-display">
-                    <input type="text" id="calcInput" value="0" readonly>
-                </div>
-                <div class="calc-buttons">
-                    <button onclick="clearCalc()">AC</button>
-                    <button onclick="clearEntry()">C</button>
-                    <button onclick="appendToCalc('√')">√</button>
-                    <button onclick="appendToCalc('/')">÷</button>
-    
-                    <button onclick="appendToCalc('7')">7</button>
-                    <button onclick="appendToCalc('8')">8</button>
-                    <button onclick="appendToCalc('9')">9</button>
-                    <button onclick="appendToCalc('*')">×</button>
-    
-                    <button onclick="appendToCalc('4')">4</button>
-                    <button onclick="appendToCalc('5')">5</button>
-                    <button onclick="appendToCalc('6')">6</button>
-                    <button onclick="appendToCalc('-')">-</button>
-    
-                    <button onclick="appendToCalc('1')">1</button>
-                    <button onclick="appendToCalc('2')">2</button>
-                    <button onclick="appendToCalc('3')">3</button>
-                    <button onclick="appendToCalc('+')">+</button>
-    
-                    <button onclick="appendToCalc('0')">0</button>
-                    <button onclick="appendToCalc('.')">.</button>
-                    <button onclick="calculate()">=</button>
-                </div>
+            <div class="calc-buttons">
+                <button onclick="clearCalc()">AC</button>
+                <button onclick="clearEntry()">C</button>
+                <button onclick="squareRoot()">√</button>
+                <button onclick="appendToCalc('/')">÷</button>
+
+                <button onclick="appendToCalc('7')">7</button>
+                <button onclick="appendToCalc('8')">8</button>
+                <button onclick="appendToCalc('9')">9</button>
+                <button onclick="appendToCalc('*')">×</button>
+
+                <button onclick="appendToCalc('4')">4</button>
+                <button onclick="appendToCalc('5')">5</button>
+                <button onclick="appendToCalc('6')">6</button>
+                <button onclick="appendToCalc('-')">-</button>
+
+                <button onclick="appendToCalc('1')">1</button>
+                <button onclick="appendToCalc('2')">2</button>
+                <button onclick="appendToCalc('3')">3</button>
+                <button onclick="appendToCalc('+')">+</button>
+
+                <button onclick="square()">X²</button>
+                <button onclick="cube()">X³</button>
+                <button onclick="appendToCalc('0')">0</button>
+                <button onclick="appendToCalc('.')">.</button>
+
+                <button onclick="memoryClear()">MC</button>
+                <button onclick="memoryRecall()">MR</button>
+                <button onclick="memorySubtract()">M-</button>
+                <button onclick="memoryAdd()">M+</button>
+
+                <button onclick="calculate()">=</button>
             </div>
-            <style>
-                .calculator {
-                    margin: 20px 0;
-                    padding: 10px;
-                    border: 1px solid #ccc;
-                    border-radius: 5px;
-                    width: 250px;
-                    background-color: #f9f9f9;
+        </div>
+        <style>
+            .calculator {
+                margin: 20px 0;
+                padding: 10px;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                width: 250px;
+                background-color: #f9f9f9;
+            }
+            .calc-display {
+                margin-bottom: 10px;
+            }
+            #calcInput {
+                width: 100%;
+                padding: 5px;
+                font-size: 1.2em;
+                text-align: right;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+            }
+            .calc-buttons {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 5px;
+            }
+            .calc-buttons button {
+                padding: 10px;
+                font-size: 1em;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+                background-color: #fff;
+                cursor: pointer;
+            }
+            .calc-buttons button:hover {
+                background-color: #e0e0e0;
+            }
+        </style>
+        <script>
+            let currentInput = '0';
+            let memory = 0;
+
+            function appendToCalc(value) {
+                if (currentInput === '0' && value !== '.') {
+                    currentInput = value;
+                } else {
+                    currentInput += value;
                 }
-                .calc-display {
-                    margin-bottom: 10px;
+                document.getElementById('calcInput').value = currentInput;
+            }
+
+            function clearCalc() {
+                currentInput = '0';
+                memory = 0;
+                document.getElementById('calcInput').value = currentInput;
+            }
+
+            function clearEntry() {
+                currentInput = '0';
+                document.getElementById('calcInput').value = currentInput;
+            }
+
+            function memoryClear() {
+                memory = 0;
+            }
+
+            function memoryRecall() {
+                currentInput = memory.toString();
+                document.getElementById('calcInput').value = currentInput;
+            }
+
+            function memorySubtract() {
+                memory -= parseFloat(currentInput) || 0;
+            }
+
+            function memoryAdd() {
+                memory += parseFloat(currentInput) || 0;
+            }
+
+            function square() {
+                try {
+                    const num = parseFloat(currentInput);
+                    currentInput = Math.pow(num, 2).toString();
+                    document.getElementById('calcInput').value = currentInput;
+                } catch (e) {
+                    document.getElementById('calcInput').value = 'Error';
+                    currentInput = '0';
                 }
-                #calcInput {
-                    width: 100%;
-                    padding: 5px;
-                    font-size: 1.2em;
-                    text-align: right;
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
+            }
+
+            function cube() {
+                try {
+                    const num = parseFloat(currentInput);
+                    currentInput = Math.pow(num, 3).toString();
+                    document.getElementById('calcInput').value = currentInput;
+                } catch (e) {
+                    document.getElementById('calcInput').value = 'Error';
+                    currentInput = '0';
                 }
-                .calc-buttons {
-                    display: grid;
-                    grid-template-columns: repeat(4, 1fr);
-                    gap: 5px;
-                }
-                .calc-buttons button {
-                    padding: 10px;
-                    font-size: 1em;
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
-                    background-color: #fff;
-                    cursor: pointer;
-                }
-                .calc-buttons button:hover {
-                    background-color: #e0e0e0;
-                }
-            </style>
-            <script>
-    let currentInput = '0';
-    let memory = 0;
+            }
 
-    function appendToCalc(value) {
-        if (currentInput === '0' && value !== '.') {
-            currentInput = value;
-        } else {
-            currentInput += value;
-        }
-        document.getElementById('calcInput').value = currentInput;
-    }
-
-    function clearCalc() {
-        currentInput = '0';
-        memory = 0;
-        document.getElementById('calcInput').value = currentInput;
-    }
-
-    function clearEntry() {
-        currentInput = '0';
-        document.getElementById('calcInput').value = currentInput;
-    }
-
-    function memoryClear() {
-        memory = 0;
-    }
-
-    function memoryRecall() {
-        currentInput = memory.toString();
-        document.getElementById('calcInput').value = currentInput;
-    }
-
-    function memorySubtract() {
-        memory -= parseFloat(currentInput) || 0;
-    }
-
-    function memoryAdd() {
-        memory += parseFloat(currentInput) || 0;
-    }
-
-    function calculate() {
-        try {
-            currentInput = eval(currentInput.replace('√', 'Math.sqrt')).toString();
-            document.getElementById('calcInput').value = currentInput;
-        } catch (e) {
-            document.getElementById('calcInput').value = 'Error';
-            currentInput = '0';
-        }
-    }
-</script>
-    `;
-
-        if (!isContestNotEnded(contest) && problem.explanation) {
-            content += `<p><a href="/contest/${contestId}/explanation/${problemId}">解答解説を見る</a></p>`;
-        }
-
-        if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
-            content += `
-                <p style="color: red;">あなたはこのコンテストの管理者権限を持っているため、開催中に問題に回答することはできません。</p>
-            `;
-        } else {
-            content += `
-                <form method="POST" action="/contest/${contestId}/submit/${problemId}" onsubmit="return validateAnswer()">
-                    <label>解答 (半角数字のみ):</label><br>
-                    <input type="number" name="answer" placeholder="解答を入力" required><br>
-                    <button type="submit">提出</button>
-                </form>
-                ${
-                    !isContestStartedOrActive(contest)
-                        ? '<p style="color: orange;">このコンテストは未開始または終了しています。提出は可能ですが、ランキングには反映されません。</p>'
-                        : ''
-                }
-                <script>
-                    function validateAnswer() {
-                        const answer = document.querySelector('input[name="answer"]').value;
-                        const regex = /^[0-9]+$/;
-                        if (!regex.test(answer)) {
-                            alert('解答は半角数字のみで入力してください。');
-                            return false;
-                        }
-                        return true;
+            function squareRoot() {
+                try {
+                    const num = parseFloat(currentInput);
+                    if (num < 0) {
+                        document.getElementById('calcInput').value = 'Error (負の数)';
+                        currentInput = '0';
+                    } else {
+                        currentInput = Math.sqrt(num).toString();
+                        document.getElementById('calcInput').value = currentInput;
                     }
-                </script>
-            `;
-        }
+                } catch (e) {
+                    document.getElementById('calcInput').value = 'Error';
+                    currentInput = '0';
+                }
+            }
 
-        content += `
-            <p><a href="${
-                hasContestStarted(contest) ? '/contest/' + contestId : '/problems'
-            }">${
-                hasContestStarted(contest) ? '問題一覧' : 'PROBLEMSページ'
-            }に戻る</a></p>
-            </section>
-        `;
+            function calculate() {
+                try {
+                    currentInput = eval(currentInput).toString();
+                    document.getElementById('calcInput').value = currentInput;
+                } catch (e) {
+                    document.getElementById('calcInput').value = 'Error';
+                    currentInput = '0';
+                }
+            }
+        </script>
+`;
+
+if (!isContestNotEnded(contest) && problem.explanation) {
+    content += `<p><a href="/contest/${contestId}/explanation/${problemId}">解答解説を見る</a></p>`;
+}
+
+if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
+    content += `
+        <p style="color: red;">あなたはこのコンテストの管理者権限を持っているため、開催中に問題に回答することはできません。</p>
+    `;
+} else {
+    content += `
+        <form method="POST" action="/contest/${contestId}/submit/${problemId}" onsubmit="return validateAnswer()">
+            <label>解答 (半角数字のみ):</label><br>
+            <input type="number" name="answer" placeholder="解答を入力" required><br>
+            <button type="submit">提出</button>
+        </form>
+        ${
+            !isContestStartedOrActive(contest)
+                ? '<p style="color: orange;">このコンテストは未開始または終了しています。提出は可能ですが、ランキングには反映されません。</p>'
+                : ''
+        }
+        <script>
+            function validateAnswer() {
+                const answer = document.querySelector('input[name="answer"]').value;
+                const regex = /^[0-9]+$/;
+                if (!regex.test(answer)) {
+                    alert('解答は半角数字のみで入力してください。');
+                    return false;
+                }
+                return true;
+            }
+        </script>
+    `;
+}
+
+content += `
+    <p><a href="${
+        hasContestStarted(contest) ? '/contest/' + contestId : '/problems'
+    }">${
+        hasContestStarted(contest) ? '問題一覧' : 'PROBLEMSページ'
+    }に戻る</a></p>
+    </section>
+`;
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('問題提出ページエラー:', err);
