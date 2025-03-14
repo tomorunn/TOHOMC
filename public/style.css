@@ -6,7 +6,7 @@ body {
     background-color: #f4f4f4;
     color: #333;
     line-height: 1.8;
-    font-size: 18px; /* フォントサイズを大きく */
+    font-size: 18px;
 }
 
 /* 見出しを大きく */
@@ -16,22 +16,22 @@ h1, h2, h3 {
 }
 
 h1 {
-    font-size: 2.5rem; /* 40px */
+    font-size: 2.5rem;
 }
 
 h2 {
-    font-size: 2rem; /* 32px */
+    font-size: 2rem;
 }
 
 h3 {
-    font-size: 1.75rem; /* 28px */
+    font-size: 1.75rem;
 }
 
 a {
     color: #2980b9;
     text-decoration: none;
     transition: color 0.3s ease;
-    font-size: 1.1rem; /* リンク文字を少し大きく */
+    font-size: 1.1rem;
 }
 
 a:hover {
@@ -42,12 +42,12 @@ a:hover {
 /* ナビゲーション */
 nav {
     background-color: #2c3e50;
-    padding: 1.5rem; /* パディングを増加 */
+    padding: 1.5rem;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
 }
 
 .nav-container {
-    max-width: 1400px; /* 幅を広げる */
+    max-width: 1400px;
     margin: 0 auto;
     display: flex;
     justify-content: space-between;
@@ -57,14 +57,14 @@ nav {
 .nav-container h1 {
     color: #fff;
     margin: 0;
-    font-size: 2rem; /* 32px */
+    font-size: 2rem;
 }
 
 .nav-toggle {
-    display: none; /* デフォルトでは非表示 */
+    display: none;
     background: none;
     border: none;
-    font-size: 2rem; /* ハンバーガーメニューのサイズ */
+    font-size: 2rem;
     color: #fff;
     cursor: pointer;
     padding: 0;
@@ -75,16 +75,17 @@ nav {
     margin: 0;
     padding: 0;
     display: flex;
-    gap: 2rem; /* 間隔を広く */
+    gap: 2rem;
 }
 
-.nav-menu li {
-    /* display: inline; は不要（flexで管理） */
+.nav-menu li.username {
+    color: #fff; /* 常に白に */
+    font-size: 1.25rem;
 }
 
 .nav-menu li a {
     color: #fff;
-    font-size: 1.25rem; /* 20px */
+    font-size: 1.25rem;
 }
 
 .nav-menu li a:hover {
@@ -98,15 +99,16 @@ nav {
     }
 
     .nav-menu {
-        display: none; /* デフォルトで非表示 */
+        display: none; /* モバイルではデフォルト非表示 */
         flex-direction: column;
         position: absolute;
-        top: 100%; /* navの下に配置 */
+        top: 100%;
         left: 0;
         right: 0;
-        background-color: #2c3e50; /* 既存のnav背景色と一致 */
+        background-color: #2c3e50;
         padding: 1.5rem;
         box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
     }
 
     .nav-menu.active {
@@ -114,29 +116,34 @@ nav {
     }
 
     .nav-menu li {
-        margin: 1rem 0; /* 縦に並ぶ際の間隔 */
+        margin: 1rem 0;
     }
 
     .nav-menu li a {
-        font-size: 1.25rem; /* 既存サイズを維持 */
+        font-size: 1.25rem;
+    }
+}
+
+@media (min-width: 769px) {
+    .nav-toggle {
+        display: none !important; /* PCでは確実に非表示 */
     }
 
-    .nav-menu li.username {
-        color: #fff; /* "Hi, username" の色を白に */
-        font-size: 1.25rem;
+    .nav-menu {
+        display: flex !important; /* PCでは常に表示 */
     }
 }
 
 /* メインコンテンツ */
 main {
-    max-width: 1400px; /* 幅を広げる */
-    margin: 3rem auto; /* マージンを増加 */
+    max-width: 1400px;
+    margin: 3rem auto;
     padding: 0 1.5rem;
 }
 
 .hero {
     background-color: #fff;
-    padding: 3rem; /* パディングを増加 */
+    padding: 3rem;
     border-radius: 10px;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
 }
@@ -147,18 +154,18 @@ main {
 
 /* タブ */
 .tabs {
-    margin: 1.5rem 0; /* マージンを増加 */
+    margin: 1.5rem 0;
     display: flex;
-    gap: 1.5rem; /* 間隔を広く */
+    gap: 1.5rem;
 }
 
 .tab {
-    padding: 0.75rem 1.5rem; /* パディングを増加 */
+    padding: 0.75rem 1.5rem;
     background-color: #ecf0f1;
     border-radius: 6px;
     color: #2c3e50;
     text-decoration: none;
-    font-size: 1.25rem; /* 20px */
+    font-size: 1.25rem;
 }
 
 .tab.active {
@@ -174,15 +181,15 @@ main {
 table {
     width: 100%;
     border-collapse: collapse;
-    margin: 1.5rem 0; /* マージンを増加 */
+    margin: 1.5rem 0;
     background-color: #fff;
 }
 
 th, td {
-    padding: 1rem; /* パディングを増加 */
+    padding: 1rem;
     text-align: left;
     border-bottom: 1px solid #ddd;
-    font-size: 1.1rem; /* 18px */
+    font-size: 1.1rem;
 }
 
 th {
@@ -201,16 +208,16 @@ tr:hover {
 /* フォーム */
 .form-container, .problem-section {
     background-color: #fff;
-    padding: 3rem; /* パディングを増加 */
+    padding: 3rem;
     border-radius: 10px;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
 }
 
 form label {
     display: block;
-    margin-bottom: 0.75rem; /* マージンを増加 */
+    margin-bottom: 0.75rem;
     font-weight: 500;
-    font-size: 1.25rem; /* 20px */
+    font-size: 1.25rem;
 }
 
 form input[type="text"],
@@ -218,28 +225,28 @@ form input[type="password"],
 form input[type="number"],
 form textarea {
     width: 100%;
-    padding: 0.75rem; /* パディングを増加 */
-    margin-bottom: 1.5rem; /* マージンを増加 */
+    padding: 0.75rem;
+    margin-bottom: 1.5rem;
     border: 1px solid #ddd;
     border-radius: 6px;
     box-sizing: border-box;
-    font-size: 1.1rem; /* 18px */
+    font-size: 1.1rem;
 }
 
 form textarea {
-    height: 200px; /* 高さを増加 */
+    height: 200px;
     resize: vertical;
 }
 
 form button {
     background-color: #2980b9;
     color: #fff;
-    padding: 1rem 2rem; /* パディングを増加 */
+    padding: 1rem 2rem;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     transition: background-color 0.3s ease;
-    font-size: 1.25rem; /* 20px */
+    font-size: 1.25rem;
 }
 
 form button:hover {
@@ -248,7 +255,7 @@ form button:hover {
 
 /* 問題表示 */
 .problem-display {
-    margin-bottom: 2rem; /* マージンを増加 */
+    margin-bottom: 2rem;
 }
 
 .problem-display img {
@@ -260,7 +267,7 @@ form button:hover {
 .math-tex {
     display: block !important;
     text-align: left !important;
-    font-size: 1.25rem; /* 数式も大きく */
+    font-size: 1.25rem;
 }
 
 /* リスト */
@@ -271,27 +278,27 @@ ul.contest-list, ul.problem-list-horizontal {
 
 ul.contest-list li {
     background-color: #fff;
-    padding: 1.5rem; /* パディングを増加 */
-    margin-bottom: 1.5rem; /* マージンを増加 */
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
     border-radius: 6px;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
 }
 
 ul.problem-list-horizontal li {
     display: inline-block;
-    margin-right: 1.5rem; /* マージンを増加 */
-    padding: 0.75rem; /* パディングを増加 */
+    margin-right: 1.5rem;
+    padding: 0.75rem;
     background-color: #ecf0f1;
     border-radius: 6px;
-    font-size: 1.1rem; /* 18px */
+    font-size: 1.1rem;
 }
 
 /* フッター */
 footer {
     text-align: center;
-    padding: 1.5rem; /* パディングを増加 */
+    padding: 1.5rem;
     background-color: #2c3e50;
     color: #fff;
-    margin-top: 3rem; /* マージンを増加 */
-    font-size: 1.1rem; /* 18px */
+    margin-top: 3rem;
+    font-size: 1.1rem;
 }

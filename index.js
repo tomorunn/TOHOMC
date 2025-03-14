@@ -171,7 +171,6 @@ const saveContests = async (contests) => {
 };
 
 // ナビゲーション生成関数
-// ナビゲーション生成関数を修正
 const generateNav = (user) => {
     if (user) {
         return `
@@ -184,20 +183,25 @@ const generateNav = (user) => {
                         <li><a href="/contests">コンテスト</a></li>
                         <li><a href="/problems">PROBLEMS</a></li>
                         <li><a href="/admin">管理者ダッシュボード</a></li>
-                        <li class="username">Hi, ${user.username}</li>
+                        <li class="username" style="color: white;">Hi, ${user.username}</li>
                         <li><a href="/logout">ログアウト</a></li>
                     </ul>
                 </div>
             </nav>
             <script>
-                document.addEventListener('DOMContentLoaded', () => {
-                    const toggle = document.querySelector('.nav-toggle');
-                    const menu = document.querySelector('.nav-menu');
-                    toggle.addEventListener('click', () => {
-                        menu.classList.toggle('active');
-                    });
-                });
-            </script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const toggle = document.querySelector('.nav-toggle');
+        const menu = document.querySelector('.nav-menu');
+        if (toggle && menu) {
+            toggle.addEventListener('click', () => {
+                menu.classList.toggle('active');
+                console.log('Menu toggled:', menu.classList.contains('active') ? 'opened' : 'closed');
+            });
+        } else {
+            console.error('Navigation elements not found:', { toggle, menu });
+        }
+    });
+</script>
         `;
     }
     return `
