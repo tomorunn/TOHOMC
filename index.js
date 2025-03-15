@@ -524,16 +524,16 @@ app.get('/admin', async (req, res) => {
     }
 });
 
-// ルート：コンテスト追加
-app.get('/admin/add-contest', async (req, res) => {
+// ルート：コンテスト追加（一般ユーザー対応）
+app.get('/contests/add-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
+        if (!user) return res.redirect('/login'); // ログイン必須だが管理者権限は不要
         const nav = generateNav(user);
         const content = `
             <section class="form-container">
                 <h2>新しいコンテストの作成</h2>
-                <form method="POST" action="/admin/add-contest">
+                <form method="POST" action="/contests/add-contest">
                     <label>コンテスト名:</label><br>
                     <input type="text" name="title" placeholder="コンテスト名" required><br>
                     <label>説明:</label><br>
@@ -551,12 +551,114 @@ app.get('/admin/add-contest', async (req, res) => {
                     </select><br>
                     <button type="submit">コンテストを作成</button>
                 </form>
-                <p><a href="/admin">管理者ダッシュボードに戻る</a></p>
+                <p><a href="/contests">コンテスト一覧に戻る</a></p>
             </section>
         `;
         res.send(generatePage(nav, content, false));
     } catch (err) {
         console.error('コンテスト追加表示エラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+app.post('/contests/add-contest', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user) return res.redirect('/login'); // ログイン必須だが管理者権限は不要
+        const { title, description, startTime, endTime, problemCount, submissionLimit } = req.body;
+        const contests = await loadContests();
+        const numProblems = parseInt(problemCount);
+        const problemIds = generateProblemIds(numProblems);
+
+        const jstStartTime = DateTime.fromISO(startTime, { zone: 'Asia/Tokyo' }).toISO();
+        const jstEndTime = DateTime.fromISO(endTime, { zone: 'Asia/Tokyo' }).toISO();
+
+        contests.push({
+            title,
+            description,
+            startTime: jstStartTime,
+            endTime: jstEndTime,
+            createdBy: user.username,
+            testers: [],
+            writers: [],
+            problems: problemIds.map((id) => ({
+                id,
+                score: 100,
+                writer: '',
+                content: '',
+                correctAnswer: '',
+                image: '',
+                explanation: '',
+            })),
+            managers: [user.username], // 作成者を管理者として追加
+            submissions: [],
+            problemCount: numProblems,
+            review: '',
+            submissionLimit: parseInt(submissionLimit) || 10,
+        });
+        await saveContests(contests);
+        res.redirect('/contests');
+    } catch (err) {
+        console.error('コンテスト追加処理エラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+// コンテスト一覧に「コンテスト作成」リンクを追加
+app.get('/contests', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        const contests = await loadContests();
+        const nav = generateNav(user);
+
+        const activeContestsWithIndex = contests
+            .map((contest, index) => ({ contest, originalIndex: index }))
+            .filter(({ contest }) => isContestNotEnded(contest));
+
+        const content = `
+            <section class="hero">
+                <h2>コンテスト一覧</h2>
+                <p>参加可能なコンテストをチェック！</p>
+                ${
+                    user
+                        ? '<p><a href="/contests/add-contest">新しいコンテストを作成</a></p>'
+                        : ''
+                }
+                <ul class="contest-list">
+                    ${
+                        activeContestsWithIndex.length > 0
+                            ? activeContestsWithIndex
+                                .map(({ contest, originalIndex }) => {
+                                    const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                    const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                    const status = isContestStartedOrActive(contest) ? '開催中' : '準備中';
+                                    return `
+                                        <li>
+                                            <h3>${contest.title}</h3>
+                                            <p>${contest.description}</p>
+                                            <p>開始: ${start}</p>
+                                            <p>終了: ${end}</p>
+                                            <p>状態: ${status}</p>
+                                            <button onclick="window.location.href='/contest/${originalIndex}'" ${
+                                                status === '準備中' ? 'disabled' : ''
+                                            }>${status === '開催中' ? '参加' : '参加'}</button>
+                                            ${
+                                                canManageContest(user, contest)
+                                                    ? `<a href="/admin/contest-details/${originalIndex}">管理</a>`
+                                                    : ''
+                                            }
+                                        </li>
+                                    `;
+                                })
+                                .join('')
+                            : '<p>現在終了していないコンテストはありません。</p>'
+                    }
+                </ul>
+            </section>
+        `;
+        res.send(generatePage(nav, content));
+    } catch (err) {
+        console.error('コンテスト一覧エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
@@ -1047,17 +1149,18 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
 
         const nav = generateNav(user);
         const content = `
-            <section class="hero">
-                <h2>${contest.title} - ランキング</h2>
-                <div class="tabs">
-                    <a href="/contest/${contestId}" class="tab">問題</a>
-                    <a href="/contest/${contestId}/submissions" class="tab">提出一覧</a>
-                    <a href="/contest/${contestId}/ranking" class="tab active">ランキング</a>
-                </div>
+        <section class="hero">
+            <h2>${contest.title} - ランキング</h2>
+            <div class="tabs">
+                <a href="/contest/${contestId}" class="tab">問題</a>
+                <a href="/contest/${contestId}/submissions" class="tab">提出一覧</a>
+                <a href="/contest/${contestId}/ranking" class="tab active">ランキング</a>
+            </div>
+            <div class="table-wrapper">
                 <table class="ranking-table" id="rankingTable">
                     <tr>
-                        <th>#</th>
-                        <th>User</th>
+                        <th class="fixed-col">#</th>
+                        <th class="fixed-col">User</th>
                         <th>Score</th>
                         <th>Last CA Time<br>Total WA</th>
                         ${problemIds
@@ -1075,26 +1178,15 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                             const isCurrentUser = rank.username === user.username;
                             return `
                                 <tr class="ranking-row" data-index="${index}">
-                                    <td>${index + 1}</td>
-                                    <td style="${
-                                        isCurrentUser ? 'font-weight: bold;' : ''
-                                    }">${rank.username}</td>
+                                    <td class="fixed-col">${index + 1}</td>
+                                    <td class="fixed-col" style="${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
                                     <td>${rank.score}</td>
-                                    <td class="last-ca-time" data-time="${Math.floor(
-                                        rank.lastCATime,
-                                    )}">${rank.totalWABeforeCA}</td>
+                                    <td class="last-ca-time" data-time="${Math.floor(rank.lastCATime)}">${rank.totalWABeforeCA}</td>
                                     ${problemIds
                                         .map((problemId) => {
-                                            const problem =
-                                                rank.problems[problemId] || {
-                                                    status: 'none',
-                                                    waCount: 0,
-                                                    time: null,
-                                                };
+                                            const problem = rank.problems[problemId] || { status: 'none', waCount: 0, time: null };
                                             if (problem.status === 'CA') {
-                                                return `<td style="background-color: #90ee90;" class="problem-time" data-time="${
-                                                    Math.floor(problem.time) || 0
-                                                }">${problem.waCount}</td>`;
+                                                return `<td style="background-color: #90ee90;" class="problem-time" data-time="${Math.floor(problem.time) || 0}">${problem.waCount}</td>`;
                                             } else if (problem.status === 'WA') {
                                                 return `<td style="background-color: #ffcccc;">+${problem.waCount}</td>`;
                                             } else {
@@ -1105,18 +1197,41 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                                 </tr>
                             `;
                         })
-                        .join('') ||
-                        '<tr><td colspan="' +
-                            (4 + problemIds.length) +
-                            '">ランキングがありません</td></tr>'
-                    }
+                        .join('') || '<tr><td colspan="' + (4 + problemIds.length) + '">ランキングがありません</td></tr>'}
                 </table>
-                <p><a href="${
-                    hasContestStarted(contest) ? '/contests' : '/problems'
-                }">${
-                    hasContestStarted(contest) ? 'コンテスト一覧' : 'PROBLEMSページ'
-                }に戻る</a></p>
-            </section>
+            </div>
+            <p><a href="${hasContestStarted(contest) ? '/contests' : '/problems'}">${hasContestStarted(contest) ? 'コンテスト一覧' : 'PROBLEMSページ'}に戻る</a></p>
+        </section>
+        <style>
+            .table-wrapper {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                max-width: 100%;
+            }
+            .ranking-table {
+                width: 100%;
+                min-width: 600px; /* 必要に応じて調整 */
+                border-collapse: collapse;
+            }
+            .ranking-table th, .ranking-table td {
+                padding: 8px;
+                text-align: center;
+                border: 1px solid #ddd;
+                white-space: nowrap;
+            }
+            .fixed-col {
+                position: sticky;
+                left: 0;
+                background-color: #f8f8f8;
+                z-index: 1;
+            }
+            @media (max-width: 768px) {
+                .ranking-table th, .ranking-table td {
+                    font-size: 0.9em;
+                    padding: 6px;
+                }
+            }
+        </style>
             <script>
                 document.addEventListener('DOMContentLoaded', function() {
                     const firstFA = ${JSON.stringify(firstFA)};
