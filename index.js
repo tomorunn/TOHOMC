@@ -1221,7 +1221,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                     text-align: center;
                     border: 1px solid #ddd;
                     white-space: nowrap;
-                    min-width: 60px; /* 各列の最小幅を設定 */
+                    min-width: 20px; /* 各列の最小幅を設定 */
                 }
                 .fixed-col {
                     position: sticky;
