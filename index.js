@@ -1026,257 +1026,257 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
 });
 
 // ルート：ランキング
-        app.get('/contest/:contestId/ranking', async (req, res) => {
-            try {
-                const user = await getUserFromCookie(req);
-                if (!user) return res.redirect('/login');
-                const contests = await loadContests();
-                const contestId = parseInt(req.params.contestId);
-        
-                if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-                    return res.status(404).send('無効なコンテストIDです');
-                }
-        
-                const contest = contests[contestId];
-                const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-        
-                const submissionsDuringContest = (contest.submissions || []).filter(
-                    (sub) => new Date(sub.date).getTime() <= endTime,
-                );
-        
-                const userSubmissionsDuringContestMap = new Map();
-                submissionsDuringContest.forEach((sub) => {
-                    const key = `${contestId}-${sub.user}-${sub.problemId}`;
-                    const existingSub = userSubmissionsDuringContestMap.get(key);
-                    if (
-                        !existingSub ||
-                        (existingSub.result !== 'CA' && sub.result === 'CA') ||
-                        (existingSub.result !== 'CA' &&
-                            sub.result !== 'CA' &&
-                            new Date(sub.date).getTime() > new Date(existingSub.date).getTime())
-                    ) {
-                        userSubmissionsDuringContestMap.set(key, sub);
-                    }
-                });
-                const uniqueSubmissionsDuringContest = Array.from(
-                    userSubmissionsDuringContestMap.values(),
-                );
-        
-                const problemIds = generateProblemIds(contest.problemCount);
-                const problemScores = {};
-                (contest.problems || []).forEach((problem) => {
-                    problemScores[problem.id] = problem.score || 100;
-                });
-        
-                const userStats = {};
-                const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-                const firstFA = {};
-        
-                submissionsDuringContest.sort(
-                    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-                );
-        
-                submissionsDuringContest.forEach((sub) => {
-                    const username = sub.user;
-                    const problemId = sub.problemId;
-                    const result = sub.result;
-                    const submissionTime = new Date(sub.date).getTime();
-                    const timeSinceStart = (submissionTime - startTime) / 1000;
-        
-                    if (!userStats[username]) {
-                        userStats[username] = {
-                            score: 0,
-                            lastCATime: 0,
-                            problems: {},
-                            totalWABeforeCA: 0,
-                        };
-                    }
-        
-                    if (!userStats[username].problems[problemId]) {
-                        userStats[username].problems[problemId] = {
-                            status: 'none',
-                            time: null,
-                            waCountBeforeCA: 0,
-                            waCount: 0,
-                        };
-                    }
-        
-                    const problemStat = userStats[username].problems[problemId];
-        
-                    if (result === 'CA' && problemStat.status !== 'CA') {
-                        problemStat.status = 'CA';
-                        problemStat.time = timeSinceStart;
-                        userStats[username].score += problemScores[problemId] || 0;
-                        userStats[username].lastCATime = Math.max(
-                            userStats[username].lastCATime,
-                            timeSinceStart,
-                        );
-        
-                        if (!firstFA[problemId] || submissionTime < firstFA[problemId].time) {
-                            firstFA[problemId] = { user: username, time: submissionTime };
-                        }
-                    } else if (result === 'WA' && problemStat.status !== 'CA') {
-                        problemStat.waCountBeforeCA += 1;
-                        problemStat.waCount += 1;
-                        problemStat.status = 'WA';
-                    } else if (result === 'WA') {
-                        problemStat.waCount += 1;
-                    }
-                });
-        
-                Object.keys(userStats).forEach((username) => {
-                    userStats[username].totalWABeforeCA = Object.values(
-                        userStats[username].problems,
-                    ).reduce((sum, p) => sum + (p.status === 'CA' ? p.waCountBeforeCA : 0), 0);
-                });
-        
-                const rankings = Object.keys(userStats).map((username) => {
-                    const stats = userStats[username];
-                    const penaltyTime = stats.totalWABeforeCA * 300;
-                    return {
-                        username,
-                        score: stats.score,
-                        lastCATime: stats.lastCATime + penaltyTime,
-                        problems: stats.problems,
-                        totalWABeforeCA: stats.totalWABeforeCA,
-                    };
-                });
-        
-                rankings.sort((a, b) => {
-                    if (b.score !== a.score) return b.score - a.score;
-                    return a.lastCATime - b.lastCATime;
-                });
-        
-                const nav = generateNav(user);
-                const content = `
-                    <section class="hero">
-                        <h2>${contest.title} - ランキング</h2>
-                        <div class="tabs">
-                            <a href="/contest/${contestId}" class="tab">問題</a>
-                            <a href="/contest/${contestId}/submissions" class="tab">提出一覧</a>
-                            <a href="/contest/${contestId}/ranking" class="tab active">ランキング</a>
-                        </div>
-                        <div class="table-wrapper">
-                            <table class="ranking-table" id="rankingTable">
-                                <thead>
-                                    <tr>
-                                        <th class="fixed-col">#</th>
-                                        <th>User</th>
-                                        <th>Score</th>
-                                        <th>Last CA Time<br>Total WA</th>
-                                        ${problemIds
-                                            .map(
-                                                (id) => `
-                                                    <th>${id}<br>${problemScores[id] || 100}<br>
-                                                    <span class="first-fa" data-problem-id="${id}"></span>
-                                                    </th>
-                                                `,
-                                            )
-                                            .join('')}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${rankings
-                                        .map((rank, index) => {
-                                            const isCurrentUser = rank.username === user.username;
-                                            return `
-                                                <tr class="ranking-row" data-index="${index}">
-                                                    <td class="fixed-col">${index + 1}</td>
-                                                    <td style="${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
-                                                    <td>${rank.score}</td>
-                                                    <td class="last-ca-time" data-time="${Math.floor(rank.lastCATime)}">${rank.totalWABeforeCA}</td>
-                                                    ${problemIds
-                                                        .map((problemId) => {
-                                                            const problem = rank.problems[problemId] || { status: 'none', waCount: 0, time: null };
-                                                            if (problem.status === 'CA') {
-                                                                return `<td style="background-color: #90ee90;" class="problem-time" data-time="${Math.floor(problem.time) || 0}">${problem.waCount}</td>`;
-                                                            } else if (problem.status === 'WA') {
-                                                                return `<td style="background-color: #ffcccc;">+${problem.waCount}</td>`;
-                                                            } else {
-                                                                return `<td>-</td>`;
-                                                            }
-                                                        })
-                                                        .join('')}
-                                                </tr>
-                                            `;
-                                        })
-                                        .join('') || '<tr><td colspan="' + (4 + problemIds.length) + '">ランキングがありません</td></tr>'}
-                                </tbody>
-                            </table>
-                        </div>
-                        <p><a href="${hasContestStarted(contest) ? '/contests' : '/problems'}">${hasContestStarted(contest) ? 'コンテスト一覧' : 'PROBLEMSページ'}に戻る</a></p>
-                    </section>
-                    <style>
-                        .table-wrapper {
-                            overflow-x: auto;
-                            -webkit-overflow-scrolling: touch;
-                            max-width: 100%;
-                        }
-                        .ranking-table {
-                            width: 100%;
-                            min-width: 600px; 
-                            border-collapse: collapse;
-                        }
-                        .ranking-table th, .ranking-table td {
-                            padding: 8px;
-                            text-align: center;
-                            border: 1px solid #ddd;
-                            white-space: nowrap;
-                        }
-                        .fixed-col {
-                            position: sticky;
-                            left: 0;
-                            background-color: #f8f8f8;
-                            z-index: 1;
-                        }
-                        @media (max-width: 768px) {
-                            .ranking-table th, .ranking-table td {
-                                font-size: 0.85em; /* スマホで文字サイズを小さく */
-                                padding: 6px;
-                            }
-                        }
-                    </style>
-                    <script>
-                        document.addEventListener('DOMContentLoaded', function() {
-                            // formatTime 関数をローカルに定義
-                            function formatTime(seconds) {
-                                const hours = Math.floor(seconds / 3600);
-                                const minutes = Math.floor((seconds % 3600) / 60);
-                                const secs = seconds % 60;
-                                return \`\${hours}:\${minutes < 10 ? '0' : ''}\${minutes}:\${secs < 10 ? '0' : ''}\${secs}\`;
-                            }
-        
-                            const firstFA = ${JSON.stringify(firstFA)};
-                            const startTime = ${startTime};
-                            document.querySelectorAll('.first-fa').forEach(cell => {
-                                const problemId = cell.getAttribute('data-problem-id');
-                                if (firstFA[problemId]) {
-                                    const faTime = Math.floor((firstFA[problemId].time - startTime) / 1000);
-                                    cell.innerHTML = \`FA: \${firstFA[problemId].user}<br>\${formatTime(faTime)}\`;
-                                } else {
-                                    cell.innerHTML = 'CA者なし';
-                                }
-                            });
-        
-                            document.querySelectorAll('.ranking-row').forEach(row => {
-                                const lastCaCell = row.querySelector('.last-ca-time');
-                                const lastCaTime = parseInt(lastCaCell.getAttribute('data-time'));
-                                lastCaCell.innerHTML = formatTime(lastCaTime) + '<br>+' + lastCaCell.textContent;
-        
-                                row.querySelectorAll('.problem-time').forEach(cell => {
-                                    const time = parseInt(cell.getAttribute('data-time'));
-                                    cell.innerHTML = formatTime(time) + '<br>+' + cell.textContent;
-                                });
-                            });
-                        });
-                    </script>
-                `;
-                res.send(generatePage(nav, content));
-            } catch (err) {
-                console.error('ランキングエラー:', err);
-                res.status(500).send("サーバーエラーが発生しました");
+app.get('/contest/:contestId/ranking', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user) return res.redirect('/login');
+        const contests = await loadContests();
+        const contestId = parseInt(req.params.contestId);
+
+        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+            return res.status(404).send('無効なコンテストIDです');
+        }
+
+        const contest = contests[contestId];
+        const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+
+        const submissionsDuringContest = (contest.submissions || []).filter(
+            (sub) => new Date(sub.date).getTime() <= endTime,
+        );
+
+        const userSubmissionsDuringContestMap = new Map();
+        submissionsDuringContest.forEach((sub) => {
+            const key = `${contestId}-${sub.user}-${sub.problemId}`;
+            const existingSub = userSubmissionsDuringContestMap.get(key);
+            if (
+                !existingSub ||
+                (existingSub.result !== 'CA' && sub.result === 'CA') ||
+                (existingSub.result !== 'CA' &&
+                    sub.result !== 'CA' &&
+                    new Date(sub.date).getTime() > new Date(existingSub.date).getTime())
+            ) {
+                userSubmissionsDuringContestMap.set(key, sub);
             }
         });
+        const uniqueSubmissionsDuringContest = Array.from(
+            userSubmissionsDuringContestMap.values(),
+        );
+
+        const problemIds = generateProblemIds(contest.problemCount);
+        const problemScores = {};
+        (contest.problems || []).forEach((problem) => {
+            problemScores[problem.id] = problem.score || 100;
+        });
+
+        const userStats = {};
+        const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+        const firstFA = {};
+
+        submissionsDuringContest.sort(
+            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+        );
+
+        submissionsDuringContest.forEach((sub) => {
+            const username = sub.user;
+            const problemId = sub.problemId;
+            const result = sub.result;
+            const submissionTime = new Date(sub.date).getTime();
+            const timeSinceStart = (submissionTime - startTime) / 1000;
+
+            if (!userStats[username]) {
+                userStats[username] = {
+                    score: 0,
+                    lastCATime: 0,
+                    problems: {},
+                    totalWABeforeCA: 0,
+                };
+            }
+
+            if (!userStats[username].problems[problemId]) {
+                userStats[username].problems[problemId] = {
+                    status: 'none',
+                    time: null,
+                    waCountBeforeCA: 0,
+                    waCount: 0,
+                };
+            }
+
+            const problemStat = userStats[username].problems[problemId];
+
+            if (result === 'CA' && problemStat.status !== 'CA') {
+                problemStat.status = 'CA';
+                problemStat.time = timeSinceStart;
+                userStats[username].score += problemScores[problemId] || 0;
+                userStats[username].lastCATime = Math.max(
+                    userStats[username].lastCATime,
+                    timeSinceStart,
+                );
+
+                if (!firstFA[problemId] || submissionTime < firstFA[problemId].time) {
+                    firstFA[problemId] = { user: username, time: submissionTime };
+                }
+            } else if (result === 'WA' && problemStat.status !== 'CA') {
+                problemStat.waCountBeforeCA += 1;
+                problemStat.waCount += 1;
+                problemStat.status = 'WA';
+            } else if (result === 'WA') {
+                problemStat.waCount += 1;
+            }
+        });
+
+        Object.keys(userStats).forEach((username) => {
+            userStats[username].totalWABeforeCA = Object.values(
+                userStats[username].problems,
+            ).reduce((sum, p) => sum + (p.status === 'CA' ? p.waCountBeforeCA : 0), 0);
+        });
+
+        const rankings = Object.keys(userStats).map((username) => {
+            const stats = userStats[username];
+            const penaltyTime = stats.totalWABeforeCA * 300;
+            return {
+                username,
+                score: stats.score,
+                lastCATime: stats.lastCATime + penaltyTime,
+                problems: stats.problems,
+                totalWABeforeCA: stats.totalWABeforeCA,
+            };
+        });
+
+        rankings.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.lastCATime - b.lastCATime;
+        });
+
+        const nav = generateNav(user);
+        const content = `
+            <section class="hero">
+                <h2>${contest.title} - ランキング</h2>
+                <div class="tabs">
+                    <a href="/contest/${contestId}" class="tab">問題</a>
+                    <a href="/contest/${contestId}/submissions" class="tab">提出一覧</a>
+                    <a href="/contest/${contestId}/ranking" class="tab active">ランキング</a>
+                </div>
+                <div class="table-wrapper">
+                    <table class="ranking-table" id="rankingTable">
+                        <thead>
+                            <tr>
+                                <th class="fixed-col">#</th>
+                                <th>User</th>
+                                <th>Score</th>
+                                <th>Last CA Time<br>Total WA</th>
+                                ${problemIds
+                                    .map(
+                                        (id) => `
+                                            <th>${id}<br>${problemScores[id] || 100}<br>
+                                            <span class="first-fa" data-problem-id="${id}"></span>
+                                            </th>
+                                        `,
+                                    )
+                                    .join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rankings
+                                .map((rank, index) => {
+                                    const isCurrentUser = rank.username === user.username;
+                                    return `
+                                        <tr class="ranking-row" data-index="${index}">
+                                            <td class="fixed-col">${index + 1}</td>
+                                            <td style="${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
+                                            <td>${rank.score}</td>
+                                            <td class="last-ca-time" data-time="${Math.floor(rank.lastCATime)}">${rank.totalWABeforeCA}</td>
+                                            ${problemIds
+                                                .map((problemId) => {
+                                                    const problem = rank.problems[problemId] || { status: 'none', waCount: 0, time: null };
+                                                    if (problem.status === 'CA') {
+                                                        return `<td style="background-color: #90ee90;" class="problem-time" data-time="${Math.floor(problem.time) || 0}">${problem.waCount}</td>`;
+                                                    } else if (problem.status === 'WA') {
+                                                        return `<td style="background-color: #ffcccc;">+${problem.waCount}</td>`;
+                                                    } else {
+                                                        return `<td>-</td>`;
+                                                    }
+                                                })
+                                                .join('')}
+                                        </tr>
+                                    `;
+                                })
+                                .join('') || '<tr><td colspan="' + (4 + problemIds.length) + '">ランキングがありません</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+                <p><a href="${hasContestStarted(contest) ? '/contests' : '/problems'}">${hasContestStarted(contest) ? 'コンテスト一覧' : 'PROBLEMSページ'}に戻る</a></p>
+            </section>
+            <style>
+                .table-wrapper {
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
+                    max-width: 100%;
+                }
+                .ranking-table {
+                    width: auto; /* 幅をコンテンツに応じて自動調整 */
+                    border-collapse: collapse;
+                }
+                .ranking-table th, .ranking-table td {
+                    padding: 8px;
+                    text-align: center;
+                    border: 1px solid #ddd;
+                    white-space: nowrap;
+                    min-width: 60px; /* 各列の最小幅を設定 */
+                }
+                .fixed-col {
+                    position: sticky;
+                    left: 0;
+                    background-color: #f8f8f8;
+                    z-index: 1;
+                    min-width: 40px; /* #列は狭めに */
+                }
+                @media (max-width: 768px) {
+                    .ranking-table th, .ranking-table td {
+                        font-size: 0.85em;
+                        padding: 6px;
+                    }
+                }
+            </style>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    function formatTime(seconds) {
+                        const hours = Math.floor(seconds / 3600);
+                        const minutes = Math.floor((seconds % 3600) / 60);
+                        const secs = seconds % 60;
+                        return \`\${hours}:\${minutes < 10 ? '0' : ''}\${minutes}:\${secs < 10 ? '0' : ''}\${secs}\`;
+                    }
+
+                    const firstFA = ${JSON.stringify(firstFA)};
+                    const startTime = ${startTime};
+                    document.querySelectorAll('.first-fa').forEach(cell => {
+                        const problemId = cell.getAttribute('data-problem-id');
+                        if (firstFA[problemId]) {
+                            const faTime = Math.floor((firstFA[problemId].time - startTime) / 1000);
+                            cell.innerHTML = \`FA: \${firstFA[problemId].user}<br>\${formatTime(faTime)}\`;
+                        } else {
+                            cell.innerHTML = 'CA者なし';
+                        }
+                    });
+
+                    document.querySelectorAll('.ranking-row').forEach(row => {
+                        const lastCaCell = row.querySelector('.last-ca-time');
+                        const lastCaTime = parseInt(lastCaCell.getAttribute('data-time'));
+                        lastCaCell.innerHTML = formatTime(lastCaTime) + '<br>+' + lastCaCell.textContent;
+
+                        row.querySelectorAll('.problem-time').forEach(cell => {
+                            const time = parseInt(cell.getAttribute('data-time'));
+                            cell.innerHTML = formatTime(time) + '<br>+' + cell.textContent;
+                        });
+                    });
+                });
+            </script>
+        `;
+        res.send(generatePage(nav, content));
+    } catch (err) {
+        console.error('ランキングエラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
 
 // ルート：問題提出ページ
 app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
