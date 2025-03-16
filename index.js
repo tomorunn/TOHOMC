@@ -1831,48 +1831,83 @@ app.get('/problems', async (req, res) => {
                 <h2>PROBLEMS</h2>
                 <div class="contest-list" style="max-height: 80vh; overflow-y: auto;">
         `;
-        contests.forEach((contest, index) => {
-            const contestId = index;
-            let totalScore = 0;
-            let solvedCount = 0;
-            contest.problems.forEach((problem) => {
-                const userSubmission = user.submissions?.find(s => s.contestId === contestId && s.problemId === problem.id);
-                if (userSubmission && userSubmission.isCorrect) {
-                    totalScore += problem.score || 100;
-                    solvedCount++;
-                }
-            });
+        
+        // 開催中のコンテストのみをフィルタリング
+        const activeContests = contests.filter(contest => hasContestStarted(contest));
+        
+        if (activeContests.length === 0) {
             content += `
-                <div class="contest-item" style="margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #ccc;">
-                    <h3>${contest.title}</h3>
-                    <p>開始: ${DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
-                    <p>終了: ${DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
-                    <p>あなたの得点: ${totalScore}点 / あなたの正解数: ${solvedCount}問</p>
-                    <div class="explanation-and-ranking">
+                <p>開催中のコンテストはありません。</p>
+            `;
+        } else {
+            activeContests.forEach((contest, index) => {
+                const contestId = contests.indexOf(contest); // フィルタリング後のインデックスではなく元のインデックスを使用
+                let totalScore = 0;
+                let solvedCount = 0;
+                contest.problems.forEach((problem) => {
+                    const userSubmission = user.submissions?.find(s => s.contestId === contestId && s.problemId === problem.id);
+                    if (userSubmission && userSubmission.isCorrect) {
+                        totalScore += problem.score || 100;
+                        solvedCount++;
+                    }
+                });
+
+                content += `
+                    <div class="contest-item" style="margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #ccc;">
+                        <h3>${contest.title}</h3>
+                        <p>開始: ${DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
+                        <p>終了: ${DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
+                        <p>あなたの得点: ${totalScore}点 / あなたの正解数: ${solvedCount}問</p>
+                        <div class="problem-status">
+                            <table>
+                                <tr>
+                                    <th>Contest</th>
+                                    ${contest.problems.map((_, idx) => `<th>${String.fromCharCode(65 + idx)}</th>`).join('')}
+                                </tr>
+                                <tr>
+                                    <td>${contest.title}</td>
+                                    ${contest.problems.map((problem) => {
+                                        const userSubmission = user.submissions?.find(s => s.contestId === contestId && s.problemId === problem.id);
+                                        let statusClass = '';
+                                        if (userSubmission) {
+                                            statusClass = userSubmission.isCorrect ? 'correct' : 'incorrect';
+                                        }
+                                        return `
+                                            <td class="${statusClass}">
+                                                <a href="/contest/${contestId}/submit/${problem.id}">${contest.title.slice(0, 6)}${problem.id}</a>
+                                            </td>
+                                        `;
+                                    }).join('')}
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="explanation-and-ranking">
+                            ${
+                                !isContestNotEnded(contest)
+                                    ? `
+                                        <div class="ranking-section">
+                                            <p><a href="/contest/${contestId}">ランキングを見る</a></p>
+                                        </div>
+                                        <div class="explanation-section">
+                                            <p><a href="/contest/${contestId}/explanation">解答解説を見る</a></p>
+                                        </div>
+                                        <div class="comment-section">
+                                            <p>講評: ${contest.comment || '未設定'}</p>
+                                        </div>
+                                    `
+                                    : ''
+                            }
+                        </div>
                         ${
-                            !isContestNotEnded(contest)
-                                ? `
-                                    <div class="ranking-section">
-                                        <p><a href="/contest/${contestId}">ランキングを見る</a></p>
-                                    </div>
-                                    <div class="explanation-section">
-                                        <p><a href="/contest/${contestId}/explanation">解答解説を見る</a></p>
-                                    </div>
-                                    <div class="comment-section">
-                                        <p>講評: ${contest.comment || '未設定'}</p>
-                                    </div>
-                                `
+                            hasContestStarted(contest) && isContestNotEnded(contest)
+                                ? `<p><a href="/contest/${contestId}">問題に挑戦</a></p>`
                                 : ''
                         }
                     </div>
-                    ${
-                        hasContestStarted(contest) && isContestNotEnded(contest)
-                            ? `<p><a href="/contest/${contestId}">問題に挑戦</a></p>`
-                            : ''
-                    }
-                </div>
-            `;
-        });
+                `;
+            });
+        }
+
         content += `
                 </div>
             </section>
@@ -1902,6 +1937,25 @@ app.get('/problems', async (req, res) => {
                     padding: 5px;
                     background-color: #e0e0e0;
                     border-radius: 3px;
+                }
+                .problem-status table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 10px 0;
+                }
+                .problem-status th, .problem-status td {
+                    border: 1px solid #ccc;
+                    padding: 5px;
+                    text-align: center;
+                }
+                .problem-status th {
+                    background-color: #e0e0e0;
+                }
+                .problem-status .correct {
+                    background-color: #90ee90; /* 緑色 */
+                }
+                .problem-status .incorrect {
+                    background-color: #ff6347; /* 赤色 */
                 }
             </style>
         `;
