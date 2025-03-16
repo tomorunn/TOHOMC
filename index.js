@@ -1732,60 +1732,115 @@ app.get('/problems', async (req, res) => {
             <section class="hero">
                 <h2>終了したコンテストの問題</h2>
                 <p>過去のコンテストの問題を閲覧できます。</p>
-                <ul class="contest-list">
-                    ${
-                        endedContests
-                            .map((contest) => {
-                                const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
-                                const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
-                                return `
-                                    <li>
-                                        <h3>${contest.title}</h3>
-                                        <p>${contest.description}</p>
-                                        <p>開始: ${start}</p>
-                                        <p>終了: ${end}</p>
-                                        <ul class="problem-list-horizontal">
-                                            ${contest.problems
-                                                .map((problem) => {
-                                                    const userSubmissions = (
-                                                        contest.submissions || []
-                                                    ).filter(
-                                                        (sub) =>
-                                                            sub.user === user.username &&
-                                                            sub.problemId === problem.id,
-                                                    );
-                                                    const isCA = userSubmissions.some(
-                                                        (sub) => sub.result === 'CA',
-                                                    );
-                                                    return `
-                                                        <li style="background-color: ${
-                                                            isCA ? '#90ee90' : 'white'
-                                                        };">
-                                                            <a href="/contest/${contests.indexOf(
-                                                                contest,
-                                                            )}/submit/${problem.id}">問題 ${
-                                                                problem.id
-                                                            } (点数: ${problem.score})</a>
-                                                        </li>
-                                                    `;
-                                                })
-                                                .join('')}
-                                        </ul>
-                                        <p><a href="/contest/${contests.indexOf(
-                                            contest,
-                                        )}">問題</a> | <a href="/contest/${contests.indexOf(
-                                            contest,
-                                        )}/submissions">提出一覧</a> | <a href="/contest/${contests.indexOf(
-                                            contest,
-                                        )}/ranking">ランキング</a></p>
-                                    </li>
-                                `;
-                            })
-                            .join('') || '<p>終了したコンテストはありません。</p>'
-                    }
-                </ul>
+                <div class="contest-table-container">
+                    <table class="contest-table">
+                        <thead>
+                            <tr>
+                                <th>コンテスト</th>
+                                <th>A</th>
+                                <th>B</th>
+                                <th>C</th>
+                                <th>D</th>
+                                <th>E</th>
+                                <th>F</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${
+                                endedContests
+                                    .map((contest) => {
+                                        const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                        const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                        const problemIds = ['A', 'B', 'C', 'D', 'E', 'F']; // 問題IDを固定で定義（AからF）
+
+                                        return `
+                                            <tr>
+                                                <td class="contest-title">
+                                                    <h3>${contest.title}</h3>
+                                                    <p>${contest.description}</p>
+                                                    <p>開始: ${start}</p>
+                                                    <p>終了: ${end}</p>
+                                                    <p>
+                                                        <a href="/contest/${contests.indexOf(contest)}">問題</a> |
+                                                        <a href="/contest/${contests.indexOf(contest)}/submissions">提出一覧</a> |
+                                                        <a href="/contest/${contests.indexOf(contest)}/ranking">ランキング</a>
+                                                    </p>
+                                                </td>
+                                                ${problemIds
+                                                    .map((problemId) => {
+                                                        const problem = contest.problems.find((p) => p.id === problemId);
+                                                        if (!problem) {
+                                                            return `<td>-</td>`; // 問題が存在しない場合は「-」を表示
+                                                        }
+                                                        const userSubmissions = (contest.submissions || []).filter(
+                                                            (sub) =>
+                                                                sub.user === user.username &&
+                                                                sub.problemId === problemId,
+                                                        );
+                                                        const isCA = userSubmissions.some((sub) => sub.result === 'CA');
+                                                        return `
+                                                            <td style="background-color: ${isCA ? '#90ee90' : 'white'};">
+                                                                <a href="/contest/${contests.indexOf(contest)}/submit/${problem.id}">
+                                                                    ${problem.id}
+                                                                </a>
+                                                            </td>
+                                                        `;
+                                                    })
+                                                    .join('')}
+                                            </tr>
+                                        `;
+                                    })
+                                    .join('') || '<tr><td colspan="7">終了したコンテストはありません。</td></tr>'
+                            }
+                        </tbody>
+                    </table>
+                </div>
                 <p><a href="/">ホームに戻る</a></p>
             </section>
+            <style>
+                .contest-table-container {
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
+                    max-width: 100%;
+                }
+                .contest-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                }
+                .contest-table th, .contest-table td {
+                    border: 1px solid #ddd;
+                    padding: 8px;
+                    text-align: center;
+                    vertical-align: middle;
+                }
+                .contest-table th {
+                    background-color: #f2f2f2;
+                }
+                .contest-table .contest-title {
+                    text-align: left;
+                    min-width: 300px;
+                }
+                .contest-table td {
+                    min-width: 50px;
+                }
+                .contest-table a {
+                    color: #007bff;
+                    text-decoration: none;
+                }
+                .contest-table a:hover {
+                    text-decoration: underline;
+                }
+                @media (max-width: 768px) {
+                    .contest-table th, .contest-table td {
+                        font-size: 0.9em;
+                        padding: 6px;
+                    }
+                    .contest-table .contest-title {
+                        min-width: 200px;
+                    }
+                }
+            </style>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
