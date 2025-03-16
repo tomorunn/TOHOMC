@@ -275,6 +275,42 @@ const generatePage = (nav, content, includeFooter = true) => `
                 font-size: 1.2em;
                 color: #ff4500;
             }
+            .modal {
+                display: none;
+                position: fixed;
+                z-index: 1000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                overflow: auto;
+                background-color: rgba(0,0,0,0.8);
+            }
+            .modal-content {
+                margin: 5% auto;
+                padding: 20px;
+                width: 90%;
+                max-width: 800px;
+                text-align: center;
+            }
+            .modal-content img {
+                max-width: 100%;
+                height: auto;
+            }
+            .close {
+                color: #fff;
+                font-size: 30px;
+                font-weight: bold;
+                position: absolute;
+                top: 10px;
+                right: 20px;
+                cursor: pointer;
+            }
+            .close:hover,
+            .close:focus {
+                color: #ccc;
+                text-decoration: none;
+            }
         </style>
         <script>
             window.formatTime = function(seconds) {
@@ -305,6 +341,24 @@ const generatePage = (nav, content, includeFooter = true) => `
                 if (confirm('本当に削除しますか？')) {
                     document.getElementById(formId).submit();
                 }
+            }
+            function showModal(imageSrc) {
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                modal.innerHTML = \`
+                    <span class="close" onclick="this.parentElement.style.display='none'">&times;</span>
+                    <div class="modal-content">
+                        <img src="\${imageSrc}" alt="Enlarged Image">
+                    </div>
+                \`;
+                document.body.appendChild(modal);
+                modal.style.display = 'block';
+                modal.onclick = function(event) {
+                    if (event.target === modal) {
+                        modal.style.display = 'none';
+                        document.body.removeChild(modal);
+                    }
+                };
             }
         </script>
     </head>
@@ -1332,11 +1386,10 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
             <p>作成者: ${problem.writer || '未設定'}</p>
             ${
                 problem.image
-                    ? `<p>画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>`
+                    ? `<p>画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px; cursor: pointer;" onclick="showModal('${problem.image.replace(/'/g, "\\'")}')"></p>`
                     : ''
             }
         </div>
-        <!-- 電卓の追加 -->
         <div class="calculator">
             <h3>簡易電卓</h3>
             <div class="calc-display">
@@ -1587,8 +1640,8 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
                 <div class="problem-display">
                     <p>解説: <span class="math-tex">${displayExplanation}</span></p>
                     ${
-                        problem.explanationImage
-                            ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px;"></p>`
+                        problem.explanationImage 
+                            ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px; cursor: pointer;" onclick="showModal('${problem.explanationImage.replace(/'/g, "\\'")}')"></p>`
                             : '<p>解説画像: 未設定</p>'
                     }
                 </div>
@@ -2048,7 +2101,7 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
             image: '',
             explanation: '',
             explanationImage: '',
-            imagePublicId: '', // Cloudinaryのpublic_idを保存
+            imagePublicId: '',
             explanationImagePublicId: '',
         };
 
@@ -2071,7 +2124,7 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                 <p>正解: ${problem.correctAnswer || '未設定'}</p>
                 ${
                     problem.image 
-                    ? `<p>問題画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px;"></p>
+                    ? `<p>問題画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px; cursor: pointer;" onclick="showModal('${problem.image.replace(/'/g, "\\'")}')"></p>
                        <form method="POST" action="/admin/problem/${contestId}/${problemId}/remove-image" style="display:inline;">
                            <input type="hidden" name="imageType" value="image">
                            <button type="submit" onclick="return confirm('問題画像を取り消しますか？')">問題画像を取り消す</button>
@@ -2081,7 +2134,7 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                 <p>解説: <span class="math-tex">${displayExplanation}</span></p>
                 ${
                     problem.explanationImage 
-                    ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px;"></p>
+                    ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px; cursor: pointer;" onclick="showModal('${problem.explanationImage.replace(/'/g, "\\'")}')"></p>
                        <form method="POST" action="/admin/problem/${contestId}/${problemId}/remove-image" style="display:inline;">
                            <input type="hidden" name="imageType" value="explanationImage">
                            <button type="submit" onclick="return confirm('解説画像を取り消しますか？')">解説画像を取り消す</button>
