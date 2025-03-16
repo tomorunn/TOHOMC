@@ -1759,8 +1759,8 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
 app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) {
-            console.error('ユーザー認証エラー: ユーザーが見つかりません');
+        if (!user || !user.username) {
+            console.error('ユーザー認証エラー: ユーザーが見つかりませんまたはusernameが未定義', user);
             return res.redirect('/login');
         }
 
@@ -1787,8 +1787,8 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
         }
 
         // 正解が設定されているか確認
-        if (!problem.correctAnswer && problem.correctAnswer !== 0) {
-            console.error(`正解が設定されていません: コンテストID: ${contestId}, 問題ID: ${problemId}`);
+        if (problem.correctAnswer === undefined || problem.correctAnswer === null) {
+            console.error(`正解が設定されていません: コンテストID: ${contestId}, 問題ID: ${problemId}, 問題データ:`, problem);
             return res.status(500).send('この問題には正解が設定されていません');
         }
 
@@ -1802,7 +1802,7 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
                     new Date(sub.date).getTime() <= endTime,
             );
         if (isContestStartedOrActive(contest) && submissionsDuringContest.length >= submissionLimit) {
-            console.error(`提出制限超過: ユーザー: ${user.username}, コンテストID: ${contestId}, 問題ID: ${problemId}, 回数: ${submissionsDuringContest.length}`);
+            console.error(`提出制限超過: ユーザー: ${user.username}, コンテストID: ${contestId}, 問題ID: ${problemId}, 提出回数: ${submissionsDuringContest.length}, 制限: ${submissionLimit}`);
             return res.status(403).send(`コンテスト中にこの問題に提出できるのは${submissionLimit}回までです。`);
         }
 
@@ -1818,8 +1818,16 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
         const userAnswer = submittedAnswer.toLowerCase();
         const isCorrect = correctAnswer === userAnswer;
 
-        // デバッグ用ログ
-        console.log(`正解判定: コンテストID: ${contestId}, 問題ID: ${problemId}, ユーザーの回答: "${userAnswer}", 正解: "${correctAnswer}", 判定結果: ${isCorrect}`);
+        // デバッグ用ログ（詳細な情報）
+        console.log(`正解判定詳細:`, {
+            contestId: contestId,
+            problemId: problemId,
+            user: user.username,
+            userAnswer: userAnswer,
+            correctAnswer: correctAnswer,
+            isCorrect: isCorrect,
+            problemData: problem
+        });
 
         // 提出データの作成
         const submission = {
@@ -1849,20 +1857,24 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
         // コンテストデータの保存
         try {
             await saveContests(contests);
-            console.log(`コンテスト情報保存成功: コンテストID: ${contestId}, 提出数: ${contest.submissions.length}`);
+            console.log(`コンテスト情報保存成功: コンテストID: ${contestId}, 提出数: ${contest.submissions.length}, 保存されたデータ:`, contest.submissions);
         } catch (saveErr) {
             console.error('コンテスト情報保存エラー:', saveErr);
             return res.status(500).send('データ保存中にエラーが発生しました');
         }
 
         // 保存後の提出データを確認
-        console.log(`保存後の提出データ:`, contest.submissions.filter(s => 
+        const savedSubmission = contest.submissions.find(s => 
             String(s.contestId) === String(contestId) && 
             String(s.problemId) === String(problemId) && 
             String(s.user) === String(user.username)
-        ));
+        );
+        if (!savedSubmission) {
+            console.error(`保存後に提出データが見つかりません: コンテストID: ${contestId}, 問題ID: ${problemId}, ユーザー: ${user.username}`);
+        } else {
+            console.log(`保存後の提出データ確認:`, savedSubmission);
+        }
 
-        // 現在の仕組みに合わせたリダイレクト
         res.redirect(`/contest/${contestId}/submit/${problemId}`);
     } catch (err) {
         console.error('問題提出処理エラー:', err);
@@ -1874,7 +1886,11 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
 app.get('/problems', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user || !user.username) {
+            console.error('ユーザー認証エラー: ユーザーが見つかりませんまたはusernameが未定義', user);
+            return res.redirect('/login');
+        }
+
         const contests = await loadContests();
         const nav = generateNav(user);
         let content = `
@@ -1895,18 +1911,22 @@ app.get('/problems', async (req, res) => {
                 const contestId = contests.indexOf(contest); // フィルタリング後のインデックスではなく元のインデックスを使用
                 let totalScore = 0;
                 let solvedCount = 0;
+
+                // スコア計算：提出データを取得し、型を厳密に比較
                 contest.problems.forEach((problem) => {
                     const userSubmission = contest.submissions?.find(s => 
                         String(s.user) === String(user.username) && 
                         String(s.problemId) === String(problem.id) && 
                         String(s.contestId) === String(contestId)
                     );
-                    if (userSubmission && userSubmission.isCorrect === true) {
-                        totalScore += problem.score || 100;
-                        solvedCount++;
-                    } else if (userSubmission && userSubmission.isCorrect === false) {
-                        // 不正解の場合もスコア計算に影響しないが、ログで確認
-                        console.log("Uncorrected Submission:", contestId, problem.id, userSubmission);
+                    if (userSubmission) {
+                        console.log(`スコア計算用提出データ確認: コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}, isCorrect: ${userSubmission.isCorrect}, 提出データ:`, userSubmission);
+                        if (userSubmission.isCorrect === true) {
+                            totalScore += problem.score || 100;
+                            solvedCount++;
+                        }
+                    } else {
+                        console.log(`スコア計算: 提出なし - コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}`);
                     }
                 });
 
@@ -1925,6 +1945,7 @@ app.get('/problems', async (req, res) => {
                                 <tr>
                                     <td>${contest.title}</td>
                                     ${contest.problems.map((problem) => {
+                                        // 表示用：提出データを再度取得し、型を厳密に比較
                                         const userSubmission = contest.submissions?.find(s => 
                                             String(s.user) === String(user.username) && 
                                             String(s.problemId) === String(problem.id) && 
@@ -1933,13 +1954,7 @@ app.get('/problems', async (req, res) => {
                                         let statusClass = '';
                                         let statusText = '';
                                         if (userSubmission) {
-                                            console.log("Submission Check:", {
-                                                contestId: contestId,
-                                                problemId: problem.id,
-                                                user: user.username,
-                                                isCorrect: userSubmission.isCorrect,
-                                                submissionData: userSubmission
-                                            });
+                                            console.log(`表示用提出データ確認: コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}, isCorrect: ${userSubmission.isCorrect}, 提出データ:`, userSubmission);
                                             if (userSubmission.isCorrect === true) {
                                                 statusClass = 'correct';
                                                 statusText = 'CA';
@@ -1947,15 +1962,15 @@ app.get('/problems', async (req, res) => {
                                                 statusClass = 'incorrect';
                                                 statusText = 'WA';
                                             } else {
-                                                console.error("Invalid isCorrect value:", userSubmission.isCorrect);
+                                                console.error(`無効なisCorrect値: コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}, isCorrect: ${userSubmission.isCorrect}, 提出データ:`, userSubmission);
                                                 statusText = '不明';
                                             }
                                         } else {
+                                            console.log(`表示用: 提出なし - コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}`);
                                             statusText = '-';
                                         }
-                                        // コンテストのタイトルを使用した問題ID表示
-                                        const contestPrefix = contest.title; // 例: OMCB038, EGMC001
-                                        const problemLabel = problem.id; // A, B, C, ...
+                                        const contestPrefix = contest.title;
+                                        const problemLabel = problem.id;
                                         const displayId = `${contestPrefix}${problemLabel}`;
                                         return `
                                             <td class="${statusClass}">
@@ -1972,8 +1987,11 @@ app.get('/problems', async (req, res) => {
                             ${
                                 !isContestNotEnded(contest)
                                     ? `
+                                        <div class="problem-list-section">
+                                            <p><a href="/contest/${contestId}">問題一覧を見る</a></p>
+                                        </div>
                                         <div class="ranking-section">
-                                            <p><a href="/contest/${contestId}">ランキングを見る</a></p>
+                                            <p><a href="/contest/${contestId}/ranking">ランキングを見る</a></p>
                                         </div>
                                         <div class="explanation-section">
                                             <p><a href="/contest/${contestId}/explanation">解答解説を見る</a></p>
@@ -2015,7 +2033,7 @@ app.get('/problems', async (req, res) => {
                     justify-content: space-between;
                     gap: 10px;
                 }
-                .ranking-section, .explanation-section, .comment-section {
+                .problem-list-section, .ranking-section, .explanation-section, .comment-section {
                     flex: 1;
                     text-align: center;
                 }
