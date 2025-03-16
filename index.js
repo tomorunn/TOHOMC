@@ -1655,106 +1655,6 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
     }
 });
 
-app.get('/contest/:contestId/explanation', async (req, res) => {
-    try {
-        const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
-        const contests = await loadContests();
-        const contestId = parseInt(req.params.contestId);
-
-        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-            return res.status(404).send('無効なコンテストIDです');
-        }
-
-        const contest = contests[contestId];
-        if (isContestNotEnded(contest)) {
-            return res.status(403).send('コンテストが終了していないため解説は閲覧できません。');
-        }
-
-        const nav = generateNav(user);
-        let content = `
-            <section class="hero">
-                <h2>${contest.title} - 解答解説一覧</h2>
-                <div class="explanation-list">
-        `;
-        contest.problems.forEach((problem) => {
-            let displayExplanation = problem.explanation || '未設定';
-            displayExplanation = displayExplanation.replace(/\n(?![ \t]*\$)/g, '<br>');
-            displayExplanation = wrapWithFlalign(displayExplanation);
-            content += `
-                <div class="explanation-item">
-                    <h3>問題 ${problem.id}</h3>
-                    <p>解説: <span class="math-tex">${displayExplanation}</span></p>
-                    ${
-                        problem.explanationImage 
-                            ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px; cursor: pointer;" onclick="showModal('${problem.explanationImage.replace(/'/g, "\\'")}')"></p>`
-                            : '<p>解説画像: 未設定</p>'
-                    }
-                    <p><a href="/contest/${contestId}/explanation/${problem.id}">詳細な解説を見る</a></p>
-                </div>
-            `;
-        });
-        content += `
-                </div>
-                <p><a href="/contest/${contestId}">コンテストに戻る</a></p>
-            </section>
-        `;
-        res.send(generatePage(nav, content));
-    } catch (err) {
-        console.error('解答解説一覧エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました");
-    }
-});
-
-app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
-    try {
-        const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
-        const contests = await loadContests();
-        const contestId = parseInt(req.params.contestId);
-        const problemId = req.params.problemId;
-
-        if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-            return res.status(404).send('無効なコンテストIDです');
-        }
-
-        const contest = contests[contestId];
-        if (isContestNotEnded(contest)) {
-            return res.status(403).send('コンテストが終了していないため解説は閲覧できません。');
-        }
-
-        const problem = contest.problems.find((p) => p.id === problemId);
-        if (!problem) {
-            return res.status(404).send('無効な問題IDです');
-        }
-
-        let displayExplanation = problem.explanation || '未設定';
-        displayExplanation = displayExplanation.replace(/\n(?![ \t]*\$)/g, '<br>');
-        displayExplanation = wrapWithFlalign(displayExplanation);
-
-        const nav = generateNav(user);
-        const content = `
-            <section class="hero">
-                <h2>${contest.title} - 問題 ${problemId} 解答解説</h2>
-                <div class="problem-display">
-                    <p>解説: <span class="math-tex">${displayExplanation}</span></p>
-                    ${
-                        problem.explanationImage 
-                            ? `<p>解説画像: <img src="${problem.explanationImage}" alt="Explanation Image" style="max-width: 300px; cursor: pointer;" onclick="showModal('${problem.explanationImage.replace(/'/g, "\\'")}')"></p>`
-                            : '<p>解説画像: 未設定</p>'
-                    }
-                </div>
-                <p><a href="/contest/${contestId}/explanation">解説一覧に戻る</a></p>
-                <p><a href="/contest/${contestId}/submit/${problemId}">問題に戻る</a></p>
-            </section>
-        `;
-        res.send(generatePage(nav, content));
-    } catch (err) {
-        console.error('問題解説エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました");
-    }
-});
-
 // ルート：問題提出処理
 app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
@@ -1826,88 +1726,70 @@ app.get('/problems', async (req, res) => {
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const nav = generateNav(user);
-        let content = `
+        const endedContests = contests.filter((contest) => !isContestNotEnded(contest));
+
+        const content = `
             <section class="hero">
-                <h2>PROBLEMS</h2>
-                <div class="contest-list" style="max-height: 80vh; overflow-y: auto;">
-        `;
-        contests.forEach((contest, index) => {
-            const contestId = index;
-            let totalScore = 0;
-            let solvedCount = 0;
-            contest.problems.forEach((problem) => {
-                const userSubmission = user.submissions?.find(s => s.contestId === contestId && s.problemId === problem.id);
-                if (userSubmission && userSubmission.isCorrect) {
-                    totalScore += problem.score || 100;
-                    solvedCount++;
-                }
-            });
-            content += `
-                <div class="contest-item" style="margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #ccc;">
-                    <h3>${contest.title}</h3>
-                    <p>開始: ${DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
-                    <p>終了: ${DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
-                    <p>あなたの得点: ${totalScore}点 / あなたの正解数: ${solvedCount}問</p>
-                    <div class="explanation-and-ranking">
-                        ${
-                            !isContestNotEnded(contest)
-                                ? `
-                                    <div class="ranking-section">
-                                        <p><a href="/contest/${contestId}">ランキングを見る</a></p>
-                                    </div>
-                                    <div class="explanation-section">
-                                        <p><a href="/contest/${contestId}/explanation">解答解説を見る</a></p>
-                                    </div>
-                                    <div class="comment-section">
-                                        <p>講評: ${contest.comment || '未設定'}</p>
-                                    </div>
-                                `
-                                : ''
-                        }
-                    </div>
+                <h2>終了したコンテストの問題</h2>
+                <p>過去のコンテストの問題を閲覧できます。</p>
+                <ul class="contest-list">
                     ${
-                        hasContestStarted(contest) && isContestNotEnded(contest)
-                            ? `<p><a href="/contest/${contestId}">問題に挑戦</a></p>`
-                            : ''
+                        endedContests
+                            .map((contest) => {
+                                const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                return `
+                                    <li>
+                                        <h3>${contest.title}</h3>
+                                        <p>${contest.description}</p>
+                                        <p>開始: ${start}</p>
+                                        <p>終了: ${end}</p>
+                                        <ul class="problem-list-horizontal">
+                                            ${contest.problems
+                                                .map((problem) => {
+                                                    const userSubmissions = (
+                                                        contest.submissions || []
+                                                    ).filter(
+                                                        (sub) =>
+                                                            sub.user === user.username &&
+                                                            sub.problemId === problem.id,
+                                                    );
+                                                    const isCA = userSubmissions.some(
+                                                        (sub) => sub.result === 'CA',
+                                                    );
+                                                    return `
+                                                        <li style="background-color: ${
+                                                            isCA ? '#90ee90' : 'white'
+                                                        };">
+                                                            <a href="/contest/${contests.indexOf(
+                                                                contest,
+                                                            )}/submit/${problem.id}">問題 ${
+                                                                problem.id
+                                                            } (点数: ${problem.score})</a>
+                                                        </li>
+                                                    `;
+                                                })
+                                                .join('')}
+                                        </ul>
+                                        <p><a href="/contest/${contests.indexOf(
+                                            contest,
+                                        )}">問題</a> | <a href="/contest/${contests.indexOf(
+                                            contest,
+                                        )}/submissions">提出一覧</a> | <a href="/contest/${contests.indexOf(
+                                            contest,
+                                        )}/ranking">ランキング</a></p>
+                                    </li>
+                                `;
+                            })
+                            .join('') || '<p>終了したコンテストはありません。</p>'
                     }
-                </div>
-            `;
-        });
-        content += `
-                </div>
+                </ul>
+                <p><a href="/">ホームに戻る</a></p>
             </section>
-            <style>
-                .contest-list {
-                    max-height: 80vh;
-                    overflow-y: auto;
-                    padding: 10px;
-                    background-color: #f9f9f9;
-                }
-                .contest-item {
-                    margin-bottom: 5px;
-                    padding: 5px;
-                    border-bottom: 1px solid #ccc;
-                }
-                .explanation-and-ranking {
-                    display: flex;
-                    justify-content: space-between;
-                    gap: 10px;
-                }
-                .ranking-section, .explanation-section, .comment-section {
-                    flex: 1;
-                    text-align: center;
-                }
-                .comment-section p {
-                    margin: 0;
-                    padding: 5px;
-                    background-color: #e0e0e0;
-                    border-radius: 3px;
-                }
-            </style>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
-        console.error('PROBLEMSページエラー:', err);
+        console.error('過去の問題エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
