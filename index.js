@@ -1869,12 +1869,23 @@ app.get('/problems', async (req, res) => {
                                     ${contest.problems.map((problem) => {
                                         const userSubmission = user.submissions?.find(s => s.contestId === contestId && s.problemId === problem.id);
                                         let statusClass = '';
+                                        let statusText = '';
                                         if (userSubmission) {
-                                            statusClass = userSubmission.isCorrect ? 'correct' : 'incorrect';
+                                            if (userSubmission.isCorrect) {
+                                                statusClass = 'correct';
+                                                statusText = 'CA';
+                                            } else {
+                                                statusClass = 'incorrect';
+                                                statusText = 'WA';
+                                            }
+                                        } else {
+                                            statusText = '-';
                                         }
                                         return `
                                             <td class="${statusClass}">
                                                 <a href="/contest/${contestId}/submit/${problem.id}">${contest.title.slice(0, 6)}${problem.id}</a>
+                                                <br>
+                                                <span>${statusText}</span>
                                             </td>
                                         `;
                                     }).join('')}
@@ -1958,6 +1969,10 @@ app.get('/problems', async (req, res) => {
                     background-color: #ff6347; /* 赤色 */
                 }
             </style>
+            <script>
+                // デバッグ用に提出データをコンソールに出力
+                console.log("User Submissions:", ${JSON.stringify(user.submissions)});
+            </script>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
