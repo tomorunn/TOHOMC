@@ -1845,8 +1845,10 @@ app.get('/problems', async (req, res) => {
                 let totalScore = 0;
                 let solvedCount = 0;
                 contest.problems.forEach((problem) => {
-                    const userSubmission = user.submissions?.find(s => s.contestId === contestId && s.problemId === problem.id);
-                    if (userSubmission && userSubmission.isCorrect) {
+                    const userSubmission = user.submissions?.find(s => 
+                        String(s.contestId) === String(contestId) && String(s.problemId) === String(problem.id)
+                    );
+                    if (userSubmission && userSubmission.isCorrect === true) {
                         totalScore += problem.score || 100;
                         solvedCount++;
                     }
@@ -1867,11 +1869,14 @@ app.get('/problems', async (req, res) => {
                                 <tr>
                                     <td>${contest.title}</td>
                                     ${contest.problems.map((problem) => {
-                                        const userSubmission = user.submissions?.find(s => s.contestId === contestId && s.problemId === problem.id);
+                                        const userSubmission = user.submissions?.find(s => 
+                                            String(s.contestId) === String(contestId) && String(s.problemId) === String(problem.id)
+                                        );
                                         let statusClass = '';
                                         let statusText = '';
                                         if (userSubmission) {
-                                            if (userSubmission.isCorrect) {
+                                            console.log("Submission for contestId:", contestId, "problemId:", problem.id, "isCorrect:", userSubmission.isCorrect);
+                                            if (userSubmission.isCorrect === true || userSubmission.isCorrect === "true") {
                                                 statusClass = 'correct';
                                                 statusText = 'CA';
                                             } else {
@@ -1881,9 +1886,13 @@ app.get('/problems', async (req, res) => {
                                         } else {
                                             statusText = '-';
                                         }
+                                        // 問題IDをゼロパディングして表示（例: EGMC001A）
+                                        const contestNum = String(contestId + 1).padStart(3, '0'); // contestIdを3桁に
+                                        const problemLabel = problem.id; // A, B, C, ...
+                                        const displayId = `EGMC${contestNum}${problemLabel}`;
                                         return `
                                             <td class="${statusClass}">
-                                                <a href="/contest/${contestId}/submit/${problem.id}">${contest.title.slice(0, 6)}${problem.id}</a>
+                                                <a href="/contest/${contestId}/submit/${problem.id}">${displayId}</a>
                                                 <br>
                                                 <span>${statusText}</span>
                                             </td>
