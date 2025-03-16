@@ -1759,37 +1759,23 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
 app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) {
-            console.error('ユーザー認証エラー: ユーザーが見つかりませんまたはusernameが未定義', user);
-            return res.redirect('/login');
-        }
-
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
 
-        // コンテストIDのバリデーション
         if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
-            console.error(`無効なコンテストID: ${contestId}, コンテスト数: ${contests.length}`);
             return res.status(404).send('無効なコンテストIDです');
         }
 
         const contest = contests[contestId];
         if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
-            console.error(`管理者による提出禁止: ユーザー: ${user.username}, コンテストID: ${contestId}`);
             return res.status(403).send('あなたはこのコンテストの管理者権限を持っているため、開催中に問題に回答することはできません。');
         }
 
-        const problem = contest.problems.find((p) => String(p.id) === String(problemId));
+        const problem = contest.problems.find((p) => p.id === problemId);
         if (!problem) {
-            console.error(`無効な問題ID: ${problemId}, コンテストID: ${contestId}, 問題リスト:`, contest.problems);
             return res.status(404).send('無効な問題IDです');
-        }
-
-        // 正解が設定されているか確認
-        if (problem.correctAnswer === undefined || problem.correctAnswer === null) {
-            console.error(`正解が設定されていません: コンテストID: ${contestId}, 問題ID: ${problemId}, 問題データ:`, problem);
-            return res.status(500).send('この問題には正解が設定されていません');
         }
 
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
@@ -1797,85 +1783,36 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
         const submissionsDuringContest = (contest.submissions || [])
             .filter(
                 (sub) =>
-                    String(sub.user) === String(user.username) &&
-                    String(sub.problemId) === String(problemId) &&
+                    sub.user === user.username &&
+                    sub.problemId === problemId &&
                     new Date(sub.date).getTime() <= endTime,
             );
         if (isContestStartedOrActive(contest) && submissionsDuringContest.length >= submissionLimit) {
-            console.error(`提出制限超過: ユーザー: ${user.username}, コンテストID: ${contestId}, 問題ID: ${problemId}, 提出回数: ${submissionsDuringContest.length}, 制限: ${submissionLimit}`);
             return res.status(403).send(`コンテスト中にこの問題に提出できるのは${submissionLimit}回までです。`);
         }
 
-        const submittedAnswer = String(req.body.answer).trim();
+        const submittedAnswer = req.body.answer.trim();
         const regex = /^[0-9]+$/;
         if (!regex.test(submittedAnswer)) {
-            console.error(`無効な入力: ユーザー: ${user.username}, 回答: "${submittedAnswer}"`);
             return res.status(400).send('解答は半角数字のみで入力してください。');
         }
 
-        // 正解判定をブール値で設定
-        const correctAnswer = String(problem.correctAnswer).trim().toLowerCase();
-        const userAnswer = submittedAnswer.toLowerCase();
-        const isCorrect = correctAnswer === userAnswer;
+        const correctAnswer = problem.correctAnswer ? problem.correctAnswer.toString().trim() : null;
+        const result = correctAnswer ? (submittedAnswer === correctAnswer ? 'CA' : 'WA') : '未判定';
 
-        // デバッグ用ログ（詳細な情報）
-        console.log(`正解判定詳細:`, {
+        const submission = {
             contestId: contestId,
+            date: DateTime.now().setZone('Asia/Tokyo').toISO(),
             problemId: problemId,
             user: user.username,
-            userAnswer: userAnswer,
-            correctAnswer: correctAnswer,
-            isCorrect: isCorrect,
-            problemData: problem
-        });
-
-        // 提出データの作成
-        const submission = {
-            contestId: String(contestId),
-            date: DateTime.now().setZone('Asia/Tokyo').toISO(),
-            problemId: String(problemId),
-            user: String(user.username),
-            isCorrect: isCorrect, // ブール値として保存
-            answer: userAnswer,
+            result: result,
+            answer: submittedAnswer,
         };
-
-        // 既存の提出があれば上書き、なければ追加
         if (!contest.submissions) contest.submissions = [];
-        const existingSubmissionIndex = contest.submissions.findIndex(s => 
-            String(s.contestId) === String(contestId) && 
-            String(s.problemId) === String(problemId) && 
-            String(s.user) === String(user.username)
-        );
-        if (existingSubmissionIndex !== -1) {
-            contest.submissions[existingSubmissionIndex] = submission;
-            console.log(`提出を上書き: コンテストID: ${contestId}, 問題ID: ${problemId}, ユーザー: ${user.username}, 新しい提出データ:`, submission);
-        } else {
-            contest.submissions.push(submission);
-            console.log(`新しい提出を追加: コンテストID: ${contestId}, 問題ID: ${problemId}, ユーザー: ${user.username}, 提出データ:`, submission);
-        }
+        contest.submissions.push(submission);
 
-        // コンテストデータの保存
-        try {
-            await saveContests(contests);
-            console.log(`コンテスト情報保存成功: コンテストID: ${contestId}, 提出数: ${contest.submissions.length}, 保存されたデータ:`, contest.submissions);
-        } catch (saveErr) {
-            console.error('コンテスト情報保存エラー:', saveErr);
-            return res.status(500).send('データ保存中にエラーが発生しました');
-        }
-
-        // 保存後の提出データを確認
-        const savedSubmission = contest.submissions.find(s => 
-            String(s.contestId) === String(contestId) && 
-            String(s.problemId) === String(problemId) && 
-            String(s.user) === String(user.username)
-        );
-        if (!savedSubmission) {
-            console.error(`保存後に提出データが見つかりません: コンテストID: ${contestId}, 問題ID: ${problemId}, ユーザー: ${user.username}`);
-        } else {
-            console.log(`保存後の提出データ確認:`, savedSubmission);
-        }
-
-        res.redirect(`/contest/${contestId}/submit/${problemId}`);
+        await saveContests(contests);
+        res.redirect(`/contest/${contestId}/submissions`);
     } catch (err) {
         console.error('問題提出処理エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
@@ -1886,11 +1823,7 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
 app.get('/problems', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.username) {
-            console.error('ユーザー認証エラー: ユーザーが見つかりませんまたはusernameが未定義', user);
-            return res.redirect('/login');
-        }
-
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const nav = generateNav(user);
         let content = `
@@ -1898,121 +1831,48 @@ app.get('/problems', async (req, res) => {
                 <h2>PROBLEMS</h2>
                 <div class="contest-list" style="max-height: 80vh; overflow-y: auto;">
         `;
-        
-        // 開催中のコンテストのみをフィルタリング
-        const activeContests = contests.filter(contest => hasContestStarted(contest));
-        
-        if (activeContests.length === 0) {
+        contests.forEach((contest, index) => {
+            const contestId = index;
+            let totalScore = 0;
+            let solvedCount = 0;
+            contest.problems.forEach((problem) => {
+                const userSubmission = user.submissions?.find(s => s.contestId === contestId && s.problemId === problem.id);
+                if (userSubmission && userSubmission.isCorrect) {
+                    totalScore += problem.score || 100;
+                    solvedCount++;
+                }
+            });
             content += `
-                <p>開催中のコンテストはありません。</p>
-            `;
-        } else {
-            activeContests.forEach((contest, index) => {
-                const contestId = contests.indexOf(contest); // フィルタリング後のインデックスではなく元のインデックスを使用
-                let totalScore = 0;
-                let solvedCount = 0;
-
-                // スコア計算：提出データを取得し、型を厳密に比較
-                contest.problems.forEach((problem) => {
-                    const userSubmission = contest.submissions?.find(s => 
-                        String(s.user) === String(user.username) && 
-                        String(s.problemId) === String(problem.id) && 
-                        String(s.contestId) === String(contestId)
-                    );
-                    if (userSubmission) {
-                        console.log(`スコア計算用提出データ確認: コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}, isCorrect: ${userSubmission.isCorrect}, 提出データ:`, userSubmission);
-                        if (userSubmission.isCorrect === true) {
-                            totalScore += problem.score || 100;
-                            solvedCount++;
-                        }
-                    } else {
-                        console.log(`スコア計算: 提出なし - コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}`);
-                    }
-                });
-
-                content += `
-                    <div class="contest-item" style="margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #ccc;">
-                        <h3>${contest.title}</h3>
-                        <p>開始: ${DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
-                        <p>終了: ${DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
-                        <p>あなたの得点: ${totalScore}点 / あなたの正解数: ${solvedCount}問</p>
-                        <div class="problem-status">
-                            <table>
-                                <tr>
-                                    <th>Contest</th>
-                                    ${contest.problems.map((_, idx) => `<th>${String.fromCharCode(65 + idx)}</th>`).join('')}
-                                </tr>
-                                <tr>
-                                    <td>${contest.title}</td>
-                                    ${contest.problems.map((problem) => {
-                                        // 表示用：提出データを再度取得し、型を厳密に比較
-                                        const userSubmission = contest.submissions?.find(s => 
-                                            String(s.user) === String(user.username) && 
-                                            String(s.problemId) === String(problem.id) && 
-                                            String(s.contestId) === String(contestId)
-                                        );
-                                        let statusClass = '';
-                                        let statusText = '';
-                                        if (userSubmission) {
-                                            console.log(`表示用提出データ確認: コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}, isCorrect: ${userSubmission.isCorrect}, 提出データ:`, userSubmission);
-                                            if (userSubmission.isCorrect === true) {
-                                                statusClass = 'correct';
-                                                statusText = 'CA';
-                                            } else if (userSubmission.isCorrect === false) {
-                                                statusClass = 'incorrect';
-                                                statusText = 'WA';
-                                            } else {
-                                                console.error(`無効なisCorrect値: コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}, isCorrect: ${userSubmission.isCorrect}, 提出データ:`, userSubmission);
-                                                statusText = '不明';
-                                            }
-                                        } else {
-                                            console.log(`表示用: 提出なし - コンテストID: ${contestId}, 問題ID: ${problem.id}, ユーザー: ${user.username}`);
-                                            statusText = '-';
-                                        }
-                                        const contestPrefix = contest.title;
-                                        const problemLabel = problem.id;
-                                        const displayId = `${contestPrefix}${problemLabel}`;
-                                        return `
-                                            <td class="${statusClass}">
-                                                <a href="/contest/${contestId}/submit/${problem.id}">${displayId}</a>
-                                                <br>
-                                                <span>${statusText}</span>
-                                            </td>
-                                        `;
-                                    }).join('')}
-                                </tr>
-                            </table>
-                        </div>
-                        <div class="explanation-and-ranking">
-                            ${
-                                !isContestNotEnded(contest)
-                                    ? `
-                                        <div class="problem-list-section">
-                                            <p><a href="/contest/${contestId}">問題一覧を見る</a></p>
-                                        </div>
-                                        <div class="ranking-section">
-                                            <p><a href="/contest/${contestId}/ranking">ランキングを見る</a></p>
-                                        </div>
-                                        <div class="explanation-section">
-                                            <p><a href="/contest/${contestId}/explanation">解答解説を見る</a></p>
-                                        </div>
-                                        <div class="comment-section">
-                                            <p>講評: ${contest.comment !== undefined && contest.comment !== null && contest.comment !== '' ? contest.comment : '未設定'}</p>
-                                        </div>
-                                    `
-                                    : ''
-                            }
-                        </div>
+                <div class="contest-item" style="margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #ccc;">
+                    <h3>${contest.title}</h3>
+                    <p>開始: ${DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
+                    <p>終了: ${DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy-MM-dd HH:mm')}</p>
+                    <p>あなたの得点: ${totalScore}点 / あなたの正解数: ${solvedCount}問</p>
+                    <div class="explanation-and-ranking">
                         ${
-                            hasContestStarted(contest) && isContestNotEnded(contest)
-                                ? `<p><a href="/contest/${contestId}">問題に挑戦</a></p>`
+                            !isContestNotEnded(contest)
+                                ? `
+                                    <div class="ranking-section">
+                                        <p><a href="/contest/${contestId}">ランキングを見る</a></p>
+                                    </div>
+                                    <div class="explanation-section">
+                                        <p><a href="/contest/${contestId}/explanation">解答解説を見る</a></p>
+                                    </div>
+                                    <div class="comment-section">
+                                        <p>講評: ${contest.comment || '未設定'}</p>
+                                    </div>
+                                `
                                 : ''
                         }
                     </div>
-                `;
-            });
-        }
-
+                    ${
+                        hasContestStarted(contest) && isContestNotEnded(contest)
+                            ? `<p><a href="/contest/${contestId}">問題に挑戦</a></p>`
+                            : ''
+                    }
+                </div>
+            `;
+        });
         content += `
                 </div>
             </section>
@@ -2033,7 +1893,7 @@ app.get('/problems', async (req, res) => {
                     justify-content: space-between;
                     gap: 10px;
                 }
-                .problem-list-section, .ranking-section, .explanation-section, .comment-section {
+                .ranking-section, .explanation-section, .comment-section {
                     flex: 1;
                     text-align: center;
                 }
@@ -2043,30 +1903,7 @@ app.get('/problems', async (req, res) => {
                     background-color: #e0e0e0;
                     border-radius: 3px;
                 }
-                .problem-status table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 10px 0;
-                }
-                .problem-status th, .problem-status td {
-                    border: 1px solid #ccc;
-                    padding: 5px;
-                    text-align: center;
-                }
-                .problem-status th {
-                    background-color: #e0e0e0;
-                }
-                .problem-status .correct {
-                    background-color: #90ee90; /* 緑色 */
-                }
-                .problem-status .incorrect {
-                    background-color: #ff6347; /* 赤色 */
-                }
             </style>
-            <script>
-                // デバッグ用に提出データをコンソールに出力
-                console.log("Contest Submissions for User ${user.username}:", ${JSON.stringify(contests.map(contest => contest.submissions?.filter(s => String(s.user) === String(user.username))))});
-            </script>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
