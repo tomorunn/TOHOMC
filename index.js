@@ -930,6 +930,7 @@ app.get('/contest/:contestId', async (req, res) => {
                         <th>ID</th>
                         <th>点数</th>
                         <th>正解者数/解答者数</th>
+                        <th>Writer</th> <!-- 新しい列を追加 -->
                     </tr>
                     ${problemIds
                         .map((problemId) => {
@@ -963,6 +964,7 @@ app.get('/contest/:contestId', async (req, res) => {
                                     <td>${problem.id}</td>
                                     <td>${problem.score || 100}</td>
                                     <td>${caSubmittersDuringContest} / ${totalSubmittersDuringContest}</td>
+                                    <td>${problem.writer || '未設定'}</td> <!-- Writerを表示 -->
                                 </tr>
                             `;
                         })
