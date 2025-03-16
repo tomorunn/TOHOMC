@@ -1759,62 +1759,82 @@ app.get('/contest/:contestId/explanation/:problemId', async (req, res) => {
 app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user) {
+            console.error('ユーザー認証エラー: ユーザーが見つかりません');
+            return res.redirect('/login');
+        }
+
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
         const problemId = req.params.problemId;
+        const answer = req.body.answer;
 
+        // コンテストIDのバリデーション
         if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+            console.error(`無効なコンテストID: ${contestId}, コンテスト数: ${contests.length}`);
             return res.status(404).send('無効なコンテストIDです');
         }
 
         const contest = contests[contestId];
-        if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
-            return res.status(403).send('あなたはこのコンテストの管理者権限を持っているため、開催中に問題に回答することはできません。');
-        }
-
-        const problem = contest.problems.find((p) => p.id === problemId);
+        const problem = contest.problems.find((p) => String(p.id) === String(problemId));
         if (!problem) {
+            console.error(`無効な問題ID: ${problemId}, コンテストID: ${contestId}, 問題リスト:`, contest.problems);
             return res.status(404).send('無効な問題IDです');
         }
 
-        const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-        const submissionLimit = contest.submissionLimit || 10;
-        const submissionsDuringContest = (contest.submissions || [])
-            .filter(
-                (sub) =>
-                    sub.user === user.username &&
-                    sub.problemId === problemId &&
-                    new Date(sub.date).getTime() <= endTime,
-            );
-        if (isContestStartedOrActive(contest) && submissionsDuringContest.length >= submissionLimit) {
-            return res.status(403).send(`コンテスト中にこの問題に提出できるのは${submissionLimit}回までです。`);
+        // 正解が設定されているか確認
+        if (!problem.correctAnswer) {
+            console.error(`正解が設定されていません: コンテストID: ${contestId}, 問題ID: ${problemId}`);
+            return res.status(500).send('この問題には正解が設定されていません');
         }
 
-        const submittedAnswer = req.body.answer.trim();
-        const regex = /^[0-9]+$/;
-        if (!regex.test(submittedAnswer)) {
-            return res.status(400).send('解答は半角数字のみで入力してください。');
-        }
+        // 型を統一して正解判定
+        const correctAnswer = String(problem.correctAnswer).trim().toLowerCase();
+        const userAnswer = String(answer).trim().toLowerCase();
+        const isCorrect = correctAnswer === userAnswer;
 
-        const correctAnswer = problem.correctAnswer ? problem.correctAnswer.toString().trim() : null;
-        const result = correctAnswer ? (submittedAnswer === correctAnswer ? 'CA' : 'WA') : '未判定';
+        // デバッグ用ログ
+        console.log(`正解判定: コンテストID: ${contestId}, 問題ID: ${problemId}, ユーザーの回答: "${userAnswer}", 正解: "${correctAnswer}", 判定結果: ${isCorrect}`);
+
+        // すでに提出済みの場合、最新の提出で上書き
+        if (!user.submissions) user.submissions = [];
+        const existingSubmissionIndex = user.submissions.findIndex(s => 
+            String(s.contestId) === String(contestId) && String(s.problemId) === String(problemId)
+        );
 
         const submission = {
-            contestId: contestId,
-            date: DateTime.now().setZone('Asia/Tokyo').toISO(),
-            problemId: problemId,
-            user: user.username,
-            result: result,
-            answer: submittedAnswer,
+            contestId: String(contestId),
+            problemId: String(problemId),
+            answer: userAnswer,
+            isCorrect: isCorrect,
+            timestamp: DateTime.now().toISO(),
         };
-        if (!contest.submissions) contest.submissions = [];
-        contest.submissions.push(submission);
 
-        await saveContests(contests);
-        res.redirect(`/contest/${contestId}/submissions`);
+        if (existingSubmissionIndex !== -1) {
+            user.submissions[existingSubmissionIndex] = submission;
+            console.log(`提出を上書き: コンテストID: ${contestId}, 問題ID: ${problemId}, 新しい提出データ:`, submission);
+        } else {
+            user.submissions.push(submission);
+            console.log(`新しい提出を追加: コンテストID: ${contestId}, 問題ID: ${problemId}, 提出データ:`, submission);
+        }
+
+        // ユーザー情報の保存
+        try {
+            await saveUsers();
+            console.log(`ユーザー情報保存成功: ユーザーID: ${user.id}, 提出数: ${user.submissions.length}`);
+        } catch (saveErr) {
+            console.error('ユーザー情報保存エラー:', saveErr);
+            return res.status(500).send('データ保存中にエラーが発生しました');
+        }
+
+        // 保存後の提出データを確認
+        console.log(`保存後の提出データ:`, user.submissions.filter(s => 
+            String(s.contestId) === String(contestId) && String(s.problemId) === String(problemId)
+        ));
+
+        res.redirect(`/contest/${contestId}/submit/${problemId}`);
     } catch (err) {
-        console.error('問題提出処理エラー:', err);
+        console.error('提出処理エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
@@ -1848,7 +1868,7 @@ app.get('/problems', async (req, res) => {
                     const userSubmission = user.submissions?.find(s => 
                         String(s.contestId) === String(contestId) && String(s.problemId) === String(problem.id)
                     );
-                    if (userSubmission && userSubmission.isCorrect === true) {
+                    if (userSubmission && (userSubmission.isCorrect === true || userSubmission.isCorrect === "true")) {
                         totalScore += problem.score || 100;
                         solvedCount++;
                     }
@@ -1875,21 +1895,21 @@ app.get('/problems', async (req, res) => {
                                         let statusClass = '';
                                         let statusText = '';
                                         if (userSubmission) {
-                                            console.log("Submission for contestId:", contestId, "problemId:", problem.id, "isCorrect:", userSubmission.isCorrect);
+                                            console.log("Submission for contestId:", contestId, "problemId:", problem.id, "isCorrect:", userSubmission.isCorrect, "Submission Data:", userSubmission);
                                             if (userSubmission.isCorrect === true || userSubmission.isCorrect === "true") {
                                                 statusClass = 'correct';
                                                 statusText = 'CA';
-                                            } else {
+                                            } else if (userSubmission.isCorrect === false || userSubmission.isCorrect === "false") {
                                                 statusClass = 'incorrect';
                                                 statusText = 'WA';
                                             }
                                         } else {
                                             statusText = '-';
                                         }
-                                        // 問題IDをゼロパディングして表示（例: EGMC001A）
-                                        const contestNum = String(contestId + 1).padStart(3, '0'); // contestIdを3桁に
+                                        // コンテストのタイトルを使用した問題ID表示
+                                        const contestPrefix = contest.title; // 例: OMCB038, EGMC001
                                         const problemLabel = problem.id; // A, B, C, ...
-                                        const displayId = `EGMC${contestNum}${problemLabel}`;
+                                        const displayId = `${contestPrefix}${problemLabel}`;
                                         return `
                                             <td class="${statusClass}">
                                                 <a href="/contest/${contestId}/submit/${problem.id}">${displayId}</a>
