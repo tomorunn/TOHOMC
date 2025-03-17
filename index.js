@@ -2093,6 +2093,9 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
         }
 
         const problemIds = generateProblemIds(contest.problemCount);
+        // ISO形式の日時を datetime-local 形式に変換
+        const startTimeFormatted = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat("yyyy-MM-dd'T'HH:mm");
+        const endTimeFormatted = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat("yyyy-MM-dd'T'HH:mm");
 
         const nav = generateNav(user);
         const content = `
@@ -2103,14 +2106,14 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                     <input type="text" name="title" value="${contest.title}" required><br>
                     <label>説明:</label><br>
                     <textarea name="description">${contest.description}</textarea><br>
+                    <label>開始時間:</label><br>
+                    <input type="datetime-local" name="startTime" value="${startTimeFormatted}" required><br>
+                    <label>終了時間:</label><br>
+                    <input type="datetime-local" name="endTime" value="${endTimeFormatted}" required><br>
                     <label>Tester (カンマ区切りで入力):</label><br>
-                    <input type="text" name="testers" value="${
-                        contest.testers.join(', ') || ''
-                    }" required><br>
+                    <input type="text" name="testers" value="${contest.testers.join(', ') || ''}" required><br>
                     <label>Writer (カンマ区切りで入力):</label><br>
-                    <input type="text" name="writers" value="${
-                        contest.writers.join(', ') || ''
-                    }" required><br>
+                    <input type="text" name="writers" value="${contest.writers.join(', ') || ''}" required><br>
                     <label>1問題あたりの提出制限 (デフォルトは10):</label><br>
                     <select name="submissionLimit">
                         <option value="5" ${contest.submissionLimit === 5 ? 'selected' : ''}>5</option>
@@ -2123,23 +2126,13 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                             return `
                                 <div>
                                     <label>問題 ${problemId}</label><br>
-                                    <input type="number" name="score_${problemId}" placeholder="点数" value="${
-                                        problem.score || 100
-                                    }" required><br>
-                                    <input type="text" name="writer_${problemId}" placeholder="作成者" value="${
-                                        problem.writer || ''
-                                    }" required><br>
-                                    <textarea name="content_${problemId}" placeholder="問題内容 (TeX使用可)">${
-                                        problem.content || ''
-                                    }</textarea><br>
+                                    <input type="number" name="score_${problemId}" placeholder="点数" value="${problem.score || 100}" required><br>
+                                    <input type="text" name="writer_${problemId}" placeholder="作成者" value="${problem.writer || ''}" required><br>
+                                    <textarea name="content_${problemId}" placeholder="問題内容 (TeX使用可)">${problem.content || ''}</textarea><br>
                                     <label>正解:</label><br>
-                                    <input type="text" name="correctAnswer_${problemId}" value="${
-                                        problem.correctAnswer || ''
-                                    }" placeholder="正解を入力"><br>
+                                    <input type="text" name="correctAnswer_${problemId}" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
                                     <label>画像URL (手動入力):</label><br>
-                                    <input type="text" name="image_${problemId}" value="${
-                                        problem.image || ''
-                                    }" placeholder="画像のURLを入力"><br>
+                                    <input type="text" name="image_${problemId}" value="${problem.image || ''}" placeholder="画像のURLを入力"><br>
                                 </div>
                             `;
                         })
@@ -2185,6 +2178,10 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
         const submissionLimit = parseInt(req.body.submissionLimit) || 10;
         const problemIds = generateProblemIds(contest.problemCount);
 
+        // 開始時間と終了時間の更新
+        const startTime = DateTime.fromISO(req.body.startTime, { zone: 'Asia/Tokyo' }).toISO();
+        const endTime = DateTime.fromISO(req.body.endTime, { zone: 'Asia/Tokyo' }).toISO();
+
         const problems = problemIds.map((problemId) => {
             const score = parseInt(req.body[`score_${problemId}`]) || 100;
             const writer = req.body[`writer_${problemId}`] || '未設定';
@@ -2203,6 +2200,9 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
         contest.writers = writers;
         contest.problems = problems;
         contest.submissionLimit = submissionLimit;
+        contest.startTime = startTime; // 開始時間を更新
+        contest.endTime = endTime;     // 終了時間を更新
+
         await saveContests(contests);
         res.redirect(`/admin/contest-details/${contestId}`);
     } catch (err) {
