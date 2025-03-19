@@ -278,6 +278,18 @@ form button:hover {
     font-size: 1.25rem;
 }
 
+/* 数式行のスタイル */
+.math-line {
+    margin: 0.3rem 0; /* 行間を狭める */
+    line-height: 1.2; /* 行の高さを調整 */
+}
+
+/* 数式内の文章部分 */
+.math-text {
+    margin: 0 0.2rem; /* 数式と文章の間のスペースを調整 */
+    display: inline; /* インラインで表示 */
+}
+
 /* リスト */
 ul.contest-list, ul.problem-list-horizontal {
     list-style: none;
