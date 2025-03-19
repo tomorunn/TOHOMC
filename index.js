@@ -248,62 +248,87 @@ const wrapWithFlalign = (content) => {
         return content;
     }
 
-    // TeX の改行（\）を HTML の改行（<br>）に変換
-    // ただし、数式内（$...$ や $$...$$ 内）の \ は変換しない
-    let processedContent = '';
-    let i = 0;
-    let inInlineMath = false;
-    let inDisplayMath = false;
+    // 行ごとに分割して処理
+    const lines = content.split(/(?<!\\)\n/); // \n で分割（ただし \ の直後の \n は除く）
+    let processedLines = [];
 
-    while (i < content.length) {
-        const char = content[i];
+    for (let line of lines) {
+        // TeX の改行（\）でさらに分割
+        const subLines = line.split(/(?<!\$)\\\\(?!\$)/); // \$ 以外で囲まれた \\ を分割
+        let processedSubLines = [];
 
-        // インライン数式 ($...$) の開始/終了を検出
-        if (char === '$' && content[i + 1] !== '$') {
-            if (!inInlineMath && !inDisplayMath) {
-                inInlineMath = true;
-                processedContent += char;
-            } else if (inInlineMath && !inDisplayMath) {
-                inInlineMath = false;
-                processedContent += char;
+        for (let subLine of subLines) {
+            subLine = subLine.trim();
+            if (!subLine) continue;
+
+            // ディスプレイ数式 ($$...$$) が含まれている場合はそのまま
+            if (subLine.startsWith('$$') && subLine.endsWith('$$')) {
+                processedSubLines.push(subLine);
+                continue;
             }
-        }
-        // ディスプレイ数式 ($$...$$) の開始/終了を検出
-        else if (char === '$' && content[i + 1] === '$') {
-            if (!inInlineMath && !inDisplayMath) {
-                inDisplayMath = true;
-                processedContent += char + content[i + 1];
-                i++;
-            } else if (!inInlineMath && inDisplayMath) {
-                inDisplayMath = false;
-                processedContent += char + content[i + 1];
+
+            // インライン数式 ($...$) を含む行を処理
+            let processedSubLine = '';
+            let i = 0;
+            let inInlineMath = false;
+
+            while (i < subLine.length) {
+                const char = subLine[i];
+
+                // インライン数式 ($...$) の開始/終了を検出
+                if (char === '$' && subLine[i + 1] !== '$') {
+                    if (!inInlineMath) {
+                        inInlineMath = true;
+                        processedSubLine += char;
+                    } else {
+                        inInlineMath = false;
+                        processedSubLine += char;
+                    }
+                }
+                // ディスプレイ数式 ($$...$$) の開始/終了を検出（念のため）
+                else if (char === '$' && subLine[i + 1] === '$') {
+                    // ディスプレイ数式内では処理をスキップ
+                    const endIndex = subLine.indexOf('$$', i + 2);
+                    if (endIndex !== -1) {
+                        processedSubLine += subLine.substring(i, endIndex + 2);
+                        i = endIndex + 1;
+                    } else {
+                        processedSubLine += char;
+                    }
+                }
+                // TeX コマンド（例: \alpha など）を保持
+                else if (char === '\\') {
+                    let command = '\\';
+                    i++;
+                    while (i < subLine.length && /[a-zA-Z{}]/.test(subLine[i])) {
+                        command += subLine[i];
+                        i++;
+                    }
+                    processedSubLine += command;
+                    i--; // ループで i++ されるので調整
+                }
+                // 通常の文字はそのまま追加
+                else {
+                    processedSubLine += char;
+                }
                 i++;
             }
-        }
-        // TeX の改行（\）を処理
-        else if (char === '\\' && content[i + 1] === '\n' && !inInlineMath && !inDisplayMath) {
-            processedContent += '<br>';
-            i++; // 次の \n をスキップ
-        }
-        // その他の TeX コマンド（例: \alpha など）はそのまま保持
-        else if (char === '\\') {
-            let command = '\\';
-            i++;
-            while (i < content.length && /[a-zA-Z{}]/.test(content[i])) {
-                command += content[i];
-                i++;
+
+            // インライン数式を含む行全体を $$...$$ で囲む（ディスプレイ数式化）
+            if (processedSubLine.includes('$')) {
+                processedSubLine = `$$${processedSubLine}$$`;
             }
-            processedContent += command;
-            i--; // ループで i++ されるので調整
+            processedSubLines.push(processedSubLine);
         }
-        // 通常の文字はそのまま追加
-        else {
-            processedContent += char;
+
+        // サブラインを <br> で結合
+        if (processedSubLines.length > 0) {
+            processedLines.push(processedSubLines.join('<br>'));
         }
-        i++;
     }
 
-    return processedContent;
+    // 行を <br> で結合
+    return processedLines.join('<br>');
 };
 
 // HTMLページ生成関数
@@ -2185,7 +2210,7 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                                     <label>問題 ${problemId}</label><br>
                                     <input type="number" name="score_${problemId}" placeholder="点数" value="${problem.score || 100}"><br>
                                     <input type="text" name="writer_${problemId}" placeholder="作成者" value="${problem.writer || ''}"><br>
-                                    <textarea name="content_${problemId}" placeholder="問題内容 (TeX使用可)">${problem.content || ''}</textarea><br>
+                                    <textarea name="content_${problemId}" placeholder="TeX使用可、各行を$$で囲む">${problem.content || ''}</textarea><br>
                                     <label>正解:</label><br>
                                     <input type="text" name="correctAnswer_${problemId}" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
                                     <label>画像URL (手動入力):</label><br>
