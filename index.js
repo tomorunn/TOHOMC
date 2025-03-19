@@ -265,7 +265,7 @@ const wrapWithFlalign = (content) => {
             const innerContent = line.slice(2, -2).trim();
             if (!innerContent) continue;
 
-            // 数式と文章を分離
+            // 数式と文章を分離して処理
             let processedLine = '';
             let i = 0;
             let inInlineMath = false;
@@ -277,9 +277,9 @@ const wrapWithFlalign = (content) => {
                 // インライン数式 ($...$) の開始/終了を検出
                 if (char === '$' && innerContent[i + 1] !== '$') {
                     if (!inInlineMath) {
-                        // 数式の前の文章を処理
+                        // 数式の前の文章を処理（そのまま追加）
                         if (buffer.trim()) {
-                            processedLine += buffer.trim() + ' ';
+                            processedLine += buffer;
                             buffer = '';
                         }
                         inInlineMath = true;
@@ -287,7 +287,7 @@ const wrapWithFlalign = (content) => {
                     } else {
                         inInlineMath = false;
                         buffer += char;
-                        // 数式部分を追加
+                        // 数式部分をそのまま追加
                         processedLine += buffer;
                         buffer = '';
                     }
@@ -311,12 +311,12 @@ const wrapWithFlalign = (content) => {
             }
 
             // 最後のバッファを処理
-            if (buffer.trim()) {
-                processedLine += buffer.trim();
+            if (buffer) {
+                processedLine += buffer;
             }
 
-            // ディスプレイ数式として再構成
-            processedLines.push(`$$${processedLine.trim()}$$`);
+            // ディスプレイ数式として再構成（div でラップして行間を調整可能に）
+            processedLines.push(`<div class="math-line">$$${processedLine.trim()}$$</div>`);
             continue;
         }
 
@@ -360,11 +360,12 @@ const wrapWithFlalign = (content) => {
         if (processedLine.includes('$')) {
             processedLine = `$$${processedLine}$$`;
         }
-        processedLines.push(processedLine);
+        // div でラップして行間を調整可能に
+        processedLines.push(`<div class="math-line">${processedLine}</div>`);
     }
 
-    // 行を <br> で結合
-    return processedLines.join('<br>');
+    // 行を結合（<br> を削除し、div のスタイルで調整）
+    return processedLines.join('');
 };
 
 // HTMLページ生成関数
