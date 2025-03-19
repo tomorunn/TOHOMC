@@ -242,16 +242,18 @@ const generateNav = (user) => {
 
 const wrapWithFlalign = (content) => {
     if (!content) return '';
-    if (content.includes('\\begin{flalign}') || content.includes('\\end{flalign}')) {
-        return content; // 既に flalign が含まれている場合はそのまま返す
+    // 既に TeX の数式環境が含まれている場合はそのまま返す
+    if (content.includes('\\begin{') && content.includes('\\end{')) {
+        return content;
     }
-    // 数式部分（インライン $...$ またはディスプレイ $$...$$）はそのまま保持し、それ以外を文章として処理
-    let processedContent = content.replace(/\n(?![ \t]*\$)/g, '<br>'); // 数式以外の改行を <br> に変換
-    const displayMathPattern = /\$\$(.*?)\$\$|\[(.*?)\]/gs;
-    processedContent = processedContent.replace(displayMathPattern, (match, p1, p2) => {
-        let innerContent = p1 || p2 || '';
-        return `$$\\begin{flalign}${innerContent}\\end{flalign}$$`; // ディスプレイ数式のみ flalign で囲む
-    });
+
+    // インライン数式 ($...$) とディスプレイ数式 ($$...$$ または [...]) をそのまま保持
+    // それ以外は TeX のプレーンテキストとして扱い、改行は <br> に変換
+    let processedContent = content
+        .replace(/\n/g, '<br>') // 改行を <br> に変換
+        .replace(/\\([a-zA-Z]+|{.*?})/g, (match) => `\\${match.slice(1)}`); // TeXコマンドをそのまま維持
+
+    // MathJax がインライン数式 ($...$) とディスプレイ数式 ($$...$$) を処理するため、特に変換は不要
     return processedContent;
 };
 
