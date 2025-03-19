@@ -240,17 +240,19 @@ const generateNav = (user) => {
     `;
 };
 
-// TeX内容を左揃えにするラッパー関数
 const wrapWithFlalign = (content) => {
     if (!content) return '';
     if (content.includes('\\begin{flalign}') || content.includes('\\end{flalign}')) {
         return content; // 既に flalign が含まれている場合はそのまま返す
     }
+    // 数式部分（インライン $...$ またはディスプレイ $$...$$）はそのまま保持し、それ以外を文章として処理
+    let processedContent = content.replace(/\n(?![ \t]*\$)/g, '<br>'); // 数式以外の改行を <br> に変換
     const displayMathPattern = /\$\$(.*?)\$\$|\[(.*?)\]/gs;
-    return content.replace(displayMathPattern, (match, p1, p2) => {
+    processedContent = processedContent.replace(displayMathPattern, (match, p1, p2) => {
         let innerContent = p1 || p2 || '';
-        return `$$\\begin{flalign}${innerContent}\\end{flalign}$$`;
+        return `$$\\begin{flalign}${innerContent}\\end{flalign}$$`; // ディスプレイ数式のみ flalign で囲む
     });
+    return processedContent;
 };
 
 // HTMLページ生成関数
@@ -536,7 +538,7 @@ app.post('/register', async (req, res) => {
 app.get('/admin', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
+        if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const nav = generateNav(user);
         const content = `
@@ -545,16 +547,18 @@ app.get('/admin', async (req, res) => {
                 <form action="/admin/add-contest" method="GET">
                     <button type="submit">コンテストを追加</button>
                 </form>
-                <h3>現在のコンテスト</h3>
+                <h3>管理可能なコンテスト</h3>
                 <ul>
                     ${
                         contests
+                            .filter(contest => canManageContest(user, contest)) // 管理者権限のあるコンテストのみ表示
                             .map((contest, index) => {
                                 const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                 const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                const status = isContestStartedOrActive(contest) ? '開催中' : (isContestNotEnded(contest) ? '準備中' : '終了');
                                 return `
                                     <li>
-                                        ${contest.title} (開始: ${start}, 終了: ${end})
+                                        ${contest.title} (開始: ${start}, 終了: ${end}, 状態: ${status})
                                         <form id="delete-form-${index}" action="/admin/delete-contest" method="POST" style="display:inline;">
                                             <input type="hidden" name="index" value="${index}">
                                             <button type="button" onclick="confirmDeletion('delete-form-${index}')">削除</button>
@@ -564,11 +568,14 @@ app.get('/admin', async (req, res) => {
                                     </li>
                                 `;
                             })
-                            .join('') || '<p>コンテストがありません</p>'
+                            .join('') || '<p>管理可能なコンテストがありません</p>'
                     }
                 </ul>
-                <h3>ユーザー管理</h3>
-                <a href="/admin/users">ユーザー管理ページへ</a>
+                ${
+                    user.isAdmin
+                        ? `<h3>ユーザー管理</h3><a href="/admin/users">ユーザー管理ページへ</a>`
+                        : ''
+                }
             </section>
         `;
         res.send(generatePage(nav, content));
@@ -2093,7 +2100,6 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
         }
 
         const problemIds = generateProblemIds(contest.problemCount);
-        // ISO形式の日時を datetime-local 形式に変換
         const startTimeFormatted = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat("yyyy-MM-dd'T'HH:mm");
         const endTimeFormatted = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat("yyyy-MM-dd'T'HH:mm");
 
@@ -2103,17 +2109,17 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                 <h2>${contest.title} の編集</h2>
                 <form method="POST" action="/admin/edit-contest/${contestId}">
                     <label>コンテスト名:</label><br>
-                    <input type="text" name="title" value="${contest.title}" required><br>
+                    <input type="text" name="title" value="${contest.title || ''}"><br>
                     <label>説明:</label><br>
-                    <textarea name="description">${contest.description}</textarea><br>
+                    <textarea name="description">${contest.description || ''}</textarea><br>
                     <label>開始時間:</label><br>
-                    <input type="datetime-local" name="startTime" value="${startTimeFormatted}" required><br>
+                    <input type="datetime-local" name="startTime" value="${startTimeFormatted}"><br>
                     <label>終了時間:</label><br>
-                    <input type="datetime-local" name="endTime" value="${endTimeFormatted}" required><br>
+                    <input type="datetime-local" name="endTime" value="${endTimeFormatted}"><br>
                     <label>Tester (カンマ区切りで入力):</label><br>
-                    <input type="text" name="testers" value="${contest.testers.join(', ') || ''}" required><br>
+                    <input type="text" name="testers" value="${contest.testers.join(', ') || ''}"><br>
                     <label>Writer (カンマ区切りで入力):</label><br>
-                    <input type="text" name="writers" value="${contest.writers.join(', ') || ''}" required><br>
+                    <input type="text" name="writers" value="${contest.writers.join(', ') || ''}"><br>
                     <label>1問題あたりの提出制限 (デフォルトは10):</label><br>
                     <select name="submissionLimit">
                         <option value="5" ${contest.submissionLimit === 5 ? 'selected' : ''}>5</option>
@@ -2126,8 +2132,8 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                             return `
                                 <div>
                                     <label>問題 ${problemId}</label><br>
-                                    <input type="number" name="score_${problemId}" placeholder="点数" value="${problem.score || 100}" required><br>
-                                    <input type="text" name="writer_${problemId}" placeholder="作成者" value="${problem.writer || ''}" required><br>
+                                    <input type="number" name="score_${problemId}" placeholder="点数" value="${problem.score || 100}"><br>
+                                    <input type="text" name="writer_${problemId}" placeholder="作成者" value="${problem.writer || ''}"><br>
                                     <textarea name="content_${problemId}" placeholder="問題内容 (TeX使用可)">${problem.content || ''}</textarea><br>
                                     <label>正解:</label><br>
                                     <input type="text" name="correctAnswer_${problemId}" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
@@ -2165,29 +2171,32 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
             return res.status(403).send('このコンテストを管理する権限がありません');
         }
 
-        const testers = req.body.testers
+        const testers = (req.body.testers || '')
             .split(',')
             .map((t) => t.trim())
             .filter((t) => t);
-        const writers = req.body.writers
+        const writers = (req.body.writers || '')
             .split(',')
             .map((w) => w.trim())
             .filter((w) => w);
-        const title = req.body.title || contest.title;
-        const description = req.body.description || contest.description;
-        const submissionLimit = parseInt(req.body.submissionLimit) || 10;
+        const title = req.body.title || contest.title || '';
+        const description = req.body.description || contest.description || '';
+        const submissionLimit = parseInt(req.body.submissionLimit) || contest.submissionLimit || 10;
         const problemIds = generateProblemIds(contest.problemCount);
 
-        // 開始時間と終了時間の更新
-        const startTime = DateTime.fromISO(req.body.startTime, { zone: 'Asia/Tokyo' }).toISO();
-        const endTime = DateTime.fromISO(req.body.endTime, { zone: 'Asia/Tokyo' }).toISO();
+        const startTime = req.body.startTime
+            ? DateTime.fromISO(req.body.startTime, { zone: 'Asia/Tokyo' }).toISO()
+            : contest.startTime;
+        const endTime = req.body.endTime
+            ? DateTime.fromISO(req.body.endTime, { zone: 'Asia/Tokyo' }).toISO()
+            : contest.endTime;
 
         const problems = problemIds.map((problemId) => {
-            const score = parseInt(req.body[`score_${problemId}`]) || 100;
-            const writer = req.body[`writer_${problemId}`] || '未設定';
-            const content = req.body[`content_${problemId}`] || '';
-            const correctAnswer = req.body[`correctAnswer_${problemId}`] || '';
             const existingProblem = contest.problems.find((p) => p.id === problemId) || {};
+            const score = parseInt(req.body[`score_${problemId}`]) || existingProblem.score || 100;
+            const writer = req.body[`writer_${problemId}`] || existingProblem.writer || '';
+            const content = req.body[`content_${problemId}`] || existingProblem.content || '';
+            const correctAnswer = req.body[`correctAnswer_${problemId}`] || existingProblem.correctAnswer || '';
             const image = req.body[`image_${problemId}`] || existingProblem.image || '';
             const explanation = existingProblem.explanation || '';
 
@@ -2200,8 +2209,8 @@ app.post('/admin/edit-contest/:contestId', async (req, res) => {
         contest.writers = writers;
         contest.problems = problems;
         contest.submissionLimit = submissionLimit;
-        contest.startTime = startTime; // 開始時間を更新
-        contest.endTime = endTime;     // 終了時間を更新
+        contest.startTime = startTime;
+        contest.endTime = endTime;
 
         await saveContests(contests);
         res.redirect(`/admin/contest-details/${contestId}`);
