@@ -242,18 +242,67 @@ const generateNav = (user) => {
 
 const wrapWithFlalign = (content) => {
     if (!content) return '';
-    // 既に TeX の数式環境が含まれている場合はそのまま返す
+
+    // 既に TeX の数式環境（例: \begin{align} など）が含まれている場合はそのまま返す
     if (content.includes('\\begin{') && content.includes('\\end{')) {
         return content;
     }
 
-    // インライン数式 ($...$) とディスプレイ数式 ($$...$$ または [...]) をそのまま保持
-    // それ以外は TeX のプレーンテキストとして扱い、改行は <br> に変換
-    let processedContent = content
-        .replace(/\n/g, '<br>') // 改行を <br> に変換
-        .replace(/\\([a-zA-Z]+|{.*?})/g, (match) => `\\${match.slice(1)}`); // TeXコマンドをそのまま維持
+    // TeX の改行（\）を HTML の改行（<br>）に変換
+    // ただし、数式内（$...$ や $$...$$ 内）の \ は変換しない
+    let processedContent = '';
+    let i = 0;
+    let inInlineMath = false;
+    let inDisplayMath = false;
 
-    // MathJax がインライン数式 ($...$) とディスプレイ数式 ($$...$$) を処理するため、特に変換は不要
+    while (i < content.length) {
+        const char = content[i];
+
+        // インライン数式 ($...$) の開始/終了を検出
+        if (char === '$' && content[i + 1] !== '$') {
+            if (!inInlineMath && !inDisplayMath) {
+                inInlineMath = true;
+                processedContent += char;
+            } else if (inInlineMath && !inDisplayMath) {
+                inInlineMath = false;
+                processedContent += char;
+            }
+        }
+        // ディスプレイ数式 ($$...$$) の開始/終了を検出
+        else if (char === '$' && content[i + 1] === '$') {
+            if (!inInlineMath && !inDisplayMath) {
+                inDisplayMath = true;
+                processedContent += char + content[i + 1];
+                i++;
+            } else if (!inInlineMath && inDisplayMath) {
+                inDisplayMath = false;
+                processedContent += char + content[i + 1];
+                i++;
+            }
+        }
+        // TeX の改行（\）を処理
+        else if (char === '\\' && content[i + 1] === '\n' && !inInlineMath && !inDisplayMath) {
+            processedContent += '<br>';
+            i++; // 次の \n をスキップ
+        }
+        // その他の TeX コマンド（例: \alpha など）はそのまま保持
+        else if (char === '\\') {
+            let command = '\\';
+            i++;
+            while (i < content.length && /[a-zA-Z{}]/.test(content[i])) {
+                command += content[i];
+                i++;
+            }
+            processedContent += command;
+            i--; // ループで i++ されるので調整
+        }
+        // 通常の文字はそのまま追加
+        else {
+            processedContent += char;
+        }
+        i++;
+    }
+
     return processedContent;
 };
 
