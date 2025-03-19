@@ -248,83 +248,119 @@ const wrapWithFlalign = (content) => {
         return content;
     }
 
-    // 行ごとに分割して処理
-    const lines = content.split(/(?<!\\)\n/); // \n で分割（ただし \ の直後の \n は除く）
+    // 末尾の余分な改行を削除
+    content = content.trim();
+
+    // 行ごとに分割（空行を除外）
+    const lines = content.split(/\n/).filter(line => line.trim() !== '');
     let processedLines = [];
 
     for (let line of lines) {
-        // TeX の改行（\）でさらに分割
-        const subLines = line.split(/(?<!\$)\\\\(?!\$)/); // \$ 以外で囲まれた \\ を分割
-        let processedSubLines = [];
+        line = line.trim();
+        if (!line) continue;
 
-        for (let subLine of subLines) {
-            subLine = subLine.trim();
-            if (!subLine) continue;
+        // ディスプレイ数式 ($$...$$) を処理
+        if (line.startsWith('$$') && line.endsWith('$$')) {
+            // $$...$$ 内の内容を抽出
+            const innerContent = line.slice(2, -2).trim();
+            if (!innerContent) continue;
 
-            // ディスプレイ数式 ($$...$$) が含まれている場合はそのまま
-            if (subLine.startsWith('$$') && subLine.endsWith('$$')) {
-                processedSubLines.push(subLine);
-                continue;
-            }
-
-            // インライン数式 ($...$) を含む行を処理
-            let processedSubLine = '';
+            // 数式と文章を分離
+            let processedLine = '';
             let i = 0;
             let inInlineMath = false;
+            let buffer = '';
 
-            while (i < subLine.length) {
-                const char = subLine[i];
+            while (i < innerContent.length) {
+                const char = innerContent[i];
 
                 // インライン数式 ($...$) の開始/終了を検出
-                if (char === '$' && subLine[i + 1] !== '$') {
+                if (char === '$' && innerContent[i + 1] !== '$') {
                     if (!inInlineMath) {
+                        // 数式の前の文章を処理
+                        if (buffer.trim()) {
+                            processedLine += buffer.trim() + ' ';
+                            buffer = '';
+                        }
                         inInlineMath = true;
-                        processedSubLine += char;
+                        buffer += char;
                     } else {
                         inInlineMath = false;
-                        processedSubLine += char;
-                    }
-                }
-                // ディスプレイ数式 ($$...$$) の開始/終了を検出（念のため）
-                else if (char === '$' && subLine[i + 1] === '$') {
-                    // ディスプレイ数式内では処理をスキップ
-                    const endIndex = subLine.indexOf('$$', i + 2);
-                    if (endIndex !== -1) {
-                        processedSubLine += subLine.substring(i, endIndex + 2);
-                        i = endIndex + 1;
-                    } else {
-                        processedSubLine += char;
+                        buffer += char;
+                        // 数式部分を追加
+                        processedLine += buffer;
+                        buffer = '';
                     }
                 }
                 // TeX コマンド（例: \alpha など）を保持
                 else if (char === '\\') {
                     let command = '\\';
                     i++;
-                    while (i < subLine.length && /[a-zA-Z{}]/.test(subLine[i])) {
-                        command += subLine[i];
+                    while (i < innerContent.length && /[a-zA-Z{}]/.test(innerContent[i])) {
+                        command += innerContent[i];
                         i++;
                     }
-                    processedSubLine += command;
+                    buffer += command;
                     i--; // ループで i++ されるので調整
                 }
-                // 通常の文字はそのまま追加
+                // 通常の文字はバッファに追加
                 else {
-                    processedSubLine += char;
+                    buffer += char;
                 }
                 i++;
             }
 
-            // インライン数式を含む行全体を $$...$$ で囲む（ディスプレイ数式化）
-            if (processedSubLine.includes('$')) {
-                processedSubLine = `$$${processedSubLine}$$`;
+            // 最後のバッファを処理
+            if (buffer.trim()) {
+                processedLine += buffer.trim();
             }
-            processedSubLines.push(processedSubLine);
+
+            // ディスプレイ数式として再構成
+            processedLines.push(`$$${processedLine.trim()}$$`);
+            continue;
         }
 
-        // サブラインを <br> で結合
-        if (processedSubLines.length > 0) {
-            processedLines.push(processedSubLines.join('<br>'));
+        // インライン数式 ($...$) を含む行を処理
+        let processedLine = '';
+        let i = 0;
+        let inInlineMath = false;
+
+        while (i < line.length) {
+            const char = line[i];
+
+            // インライン数式 ($...$) の開始/終了を検出
+            if (char === '$' && line[i + 1] !== '$') {
+                if (!inInlineMath) {
+                    inInlineMath = true;
+                    processedLine += char;
+                } else {
+                    inInlineMath = false;
+                    processedLine += char;
+                }
+            }
+            // TeX コマンド（例: \alpha など）を保持
+            else if (char === '\\') {
+                let command = '\\';
+                i++;
+                while (i < line.length && /[a-zA-Z{}]/.test(line[i])) {
+                    command += line[i];
+                    i++;
+                }
+                processedLine += command;
+                i--; // ループで i++ されるので調整
+            }
+            // 通常の文字はそのまま追加
+            else {
+                processedLine += char;
+            }
+            i++;
         }
+
+        // インライン数式を含む行全体を $$...$$ で囲む（ディスプレイ数式化）
+        if (processedLine.includes('$')) {
+            processedLine = `$$${processedLine}$$`;
+        }
+        processedLines.push(processedLine);
     }
 
     // 行を <br> で結合
@@ -2368,7 +2404,7 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
             </div>
             <h3>問題内容の編集</h3>
             <form method="POST" action="/admin/problem/${contestId}/${problemId}">
-                <label>問題内容 (TeX使用可, $$...$$で囲む):</label><br>
+                <label>問題内容 (TeX使用可、各行を$$で囲む):</label><br>
                 <textarea name="content" placeholder="問題内容">${problem.content || ''}</textarea><br>
                 <label>点数:</label><br>
                 <input type="number" name="score" value="${problem.score || 100}" required><br>
