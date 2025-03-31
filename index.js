@@ -285,7 +285,7 @@ const calculateDifficulty = (contest, problemId, users) => {
 // Performanceの計算: 解けた問題のdifficultyの総和 / コンテストにおける順位
 // Performance計算関数（修正）
 const calculatePerformance = (contest, username, rank, contests) => {
-    console.log(`ユーザー ${username} のPerformance計算を開始します...`);
+    console.log(`[Performance計算] ユーザー: ${username}, 順位: ${rank}`);
     const submissions = contest.submissions || [];
     const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
 
@@ -293,42 +293,53 @@ const calculatePerformance = (contest, username, rank, contests) => {
     const userSubmissions = submissions.filter(
         sub => sub.user === username && sub.result === 'CA' && new Date(sub.date).getTime() <= endTime
     );
+    console.log(`[Performance計算] ${username} の正解提出数: ${userSubmissions.length}`);
+
     const solvedProblems = new Set(userSubmissions.map(sub => sub.problemId));
+    console.log(`[Performance計算] ${username} が解いた問題: ${Array.from(solvedProblems)}`);
 
     // 解けた問題のDifficultyの総和
     let totalDifficulty = Array.from(solvedProblems).reduce((sum, problemId) => {
         const problem = contest.problems.find(p => p.id === problemId);
-        return sum + (problem && problem.difficulty ? problem.difficulty : 100);
+        const difficulty = problem && problem.difficulty ? problem.difficulty : 100;
+        console.log(`[Performance計算] 問題 ${problemId} のDifficulty: ${difficulty}`);
+        return sum + difficulty;
     }, 0);
 
-    // 解いた問題がない場合、最低限のDifficultyを付与
     if (solvedProblems.size === 0) {
-        totalDifficulty = 100; // 未解決でも最低限のベースポイント
+        totalDifficulty = 100; // 未解決時のベースポイント
+        console.log(`[Performance計算] ${username} は問題を解いていないため、totalDifficulty = 100`);
+    } else {
+        console.log(`[Performance計算] ${username} のtotalDifficulty: ${totalDifficulty}`);
     }
 
-    // Performance計算: 総Difficultyを順位でスケーリング
-    const basePerformance = 100; // ベースポイント
+    // Performance計算
+    const basePerformance = 100;
     const performance = totalDifficulty * Math.log10(1 + solvedProblems.size) / Math.log10(rank + 1) + basePerformance;
+    console.log(`[Performance計算] 計算式: ${totalDifficulty} * log10(${1 + solvedProblems.size}) / log10(${rank + 1}) + ${basePerformance} = ${performance}`);
 
     if (isNaN(performance) || !isFinite(performance)) {
-        console.log(`Performanceが異常値のため、デフォルト値100を返します。`);
+        console.log(`[Performance計算] Performanceが異常値(NaN/無限大)のため、100を返します`);
         return 100;
     }
 
     const cappedPerformance = Math.max(100, Math.min(3000, performance));
-    console.log(`ユーザー ${username} のPerformance: ${cappedPerformance}`);
+    console.log(`[Performance計算] ${username} の最終Performance: ${cappedPerformance}`);
     return Math.floor(cappedPerformance);
 };
 
 // Rating更新関数（修正）
 const updateUserRating = (user, performance) => {
-    console.log(`ユーザー ${user.username} のRating更新を開始します...`);
+    console.log(`[Rating更新] ユーザー: ${user.username}, Performance: ${performance}`);
     const previousRating = user.rating || 100;
-    const effectivePerformance = Math.max(100, performance); // Performanceが低すぎないように
-    const newRating = (previousRating * 0.8) + (effectivePerformance * 0.2); // 変化を大きく
+    console.log(`[Rating更新] 以前のRating: ${previousRating}`);
 
-    console.log(`Rating更新: (${previousRating} * 0.8) + (${effectivePerformance} * 0.2) = ${newRating}`);
+    const effectivePerformance = Math.max(100, performance);
+    const newRating = (previousRating * 0.8) + (effectivePerformance * 0.2);
+    console.log(`[Rating更新] 計算式: (${previousRating} * 0.8) + (${effectivePerformance} * 0.2) = ${newRating}`);
+
     user.rating = Math.floor(newRating);
+    console.log(`[Rating更新] 新しいRating: ${user.rating}`);
     return user.rating;
 };
 
@@ -1437,25 +1448,33 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
 });
 
 // ルート：ランキング
-// ルート：ランキング
 app.get('/contest/:contestId/ranking', async (req, res) => {
     try {
+        console.log('[ランキング] リクエスト開始');
         const user = await getUserFromCookie(req);
-        if (!user) return res.redirect('/login');
+        if (!user) {
+            console.log('[ランキング] ユーザーが認証されていないため、リダイレクト');
+            return res.redirect('/login');
+        }
+
         const contests = await loadContests();
         const users = await loadUsers();
         const contestId = parseInt(req.params.contestId);
+        console.log(`[ランキング] コンテストID: ${contestId}`);
 
         if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
+            console.log('[ランキング] 無効なコンテストID');
             return res.status(404).send('無効なコンテストIDです');
         }
 
         const contest = contests[contestId];
+        console.log(`[ランキング] コンテスト: ${contest.title}`);
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
 
         const submissionsDuringContest = (contest.submissions || []).filter(
             (sub) => new Date(sub.date).getTime() <= endTime,
         );
+        console.log(`[ランキング] コンテスト期間中の提出数: ${submissionsDuringContest.length}`);
 
         const userSubmissionsDuringContestMap = new Map();
         submissionsDuringContest.forEach((sub) => {
@@ -1471,9 +1490,8 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                 userSubmissionsDuringContestMap.set(key, sub);
             }
         });
-        const uniqueSubmissionsDuringContest = Array.from(
-            userSubmissionsDuringContestMap.values(),
-        );
+        const uniqueSubmissionsDuringContest = Array.from(userSubmissionsDuringContestMap.values());
+        console.log(`[ランキング] ユニークな提出数: ${uniqueSubmissionsDuringContest.length}`);
 
         const problemIds = generateProblemIds(contest.problemCount);
         const problemScores = {};
@@ -1481,10 +1499,15 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
             problemScores[problem.id] = problem.score || 100;
         });
 
-        // 各問題のdifficultyを計算
-        contest.problems.forEach(problem => {
-            problem.difficulty = calculateDifficulty(contest, problem.id, users);
-        });
+        // 各問題のdifficultyを計算（エラー防止のためcontest.problemsが空の場合を考慮）
+        if (contest.problems && contest.problems.length > 0) {
+            contest.problems.forEach(problem => {
+                problem.difficulty = calculateDifficulty(contest, problem.id, users);
+                console.log(`[ランキング] 問題 ${problem.id} のDifficulty: ${problem.difficulty}`);
+            });
+        } else {
+            console.log('[ランキング] contest.problemsが空または未定義です');
+        }
 
         const userStats = {};
         const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
@@ -1547,6 +1570,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                 userStats[username].problems,
             ).reduce((sum, p) => sum + (p.status === 'CA' ? p.waCountBeforeCA : 0), 0);
         });
+        console.log(`[ランキング] ユーザー統計計算完了: ${Object.keys(userStats).length} 名`);
 
         const rankings = Object.keys(userStats).map((username) => {
             const stats = userStats[username];
@@ -1564,19 +1588,26 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
             if (b.score !== a.score) return b.score - a.score;
             return a.lastCATime - b.lastCATime;
         });
+        console.log(`[ランキング] ランキング生成完了: ${rankings.length} 件`);
 
-        // Performanceとratingの計算（コンテストが終了している場合のみ）
+        // PerformanceとRatingの計算（コンテストが終了している場合のみ）
         if (!isContestNotEnded(contest)) {
+            console.log('[ランキング] コンテスト終了済みのため、PerformanceとRatingを更新');
             const userPerformances = {};
             rankings.forEach((rank, index) => {
                 const rankPosition = index + 1;
                 const performance = calculatePerformance(contest, rank.username, rankPosition, contests);
                 userPerformances[rank.username] = performance;
             });
-    
+
             for (const [username, performance] of Object.entries(userPerformances)) {
                 const targetUser = users.find(u => u.username === username);
                 if (targetUser) {
+                    // contestHistoryが未定義の場合に初期化
+                    if (!targetUser.contestHistory) {
+                        targetUser.contestHistory = [];
+                        console.log(`[ランキング] ${username} のcontestHistoryを初期化`);
+                    }
                     const existingHistory = targetUser.contestHistory.find(h => h.contestId === contestId);
                     if (!existingHistory) {
                         const newRating = updateUserRating(targetUser, performance);
@@ -1588,16 +1619,25 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                             ratingAfterContest: newRating,
                             endTime: contest.endTime,
                         });
+                        console.log(`[ランキング] ${username} の履歴を追加`);
+                    } else {
+                        console.log(`[ランキング] ${username} の履歴は既存のためスキップ`);
                     }
+                } else {
+                    console.log(`[ランキング] ユーザー ${username} が見つかりません`);
                 }
             }
             await saveUsers(users);
-    
+            console.log('[ランキング] ユーザー更新を保存');
+
             contest.userPerformances = Object.entries(userPerformances).map(([username, performance]) => ({
                 username,
                 performance,
             }));
             await saveContests(contests);
+            console.log('[ランキング] コンテスト更新を保存');
+        } else {
+            console.log('[ランキング] コンテストは終了していないため、PerformanceとRatingは更新しません');
         }
 
         const nav = generateNav(user);
@@ -1629,34 +1669,34 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                             </tr>
                         </thead>
                         <tbody>
-    ${rankings
-        .map((rank, index) => {
-            const isCurrentUser = rank.username === user.username;
-            const targetUser = users.find(u => u.username === rank.username);
-            const ratingColor = getRatingColor(targetUser ? (targetUser.rating || 0) : 0);
-            return `
-                <tr class="ranking-row" data-index="${index}">
-                    <td class="fixed-col">${index + 1}</td>
-                    <td style="color: ${ratingColor}; ${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
-                    <td>${rank.score}</td>
-                    <td class="last-ca-time" data-time="${Math.floor(rank.lastCATime)}">${rank.totalWABeforeCA}</td>
-                    ${problemIds
-                        .map((problemId) => {
-                            const problem = rank.problems[problemId] || { status: 'none', waCount: 0, time: null };
-                            if (problem.status === 'CA') {
-                                return `<td style="background-color: #90ee90;" class="problem-time" data-time="${Math.floor(problem.time) || 0}">${problem.waCount}</td>`;
-                            } else if (problem.status === 'WA') {
-                                return `<td style="background-color: #ffcccc;">+${problem.waCount}</td>`;
-                            } else {
-                                return `<td>-</td>`;
-                            }
-                        })
-                        .join('')}
-                </tr>
-            `;
-        })
-        .join('') || '<tr><td colspan="' + (4 + problemIds.length) + '">ランキングがありません</td></tr>'}
-</tbody>
+                            ${rankings
+                                .map((rank, index) => {
+                                    const isCurrentUser = rank.username === user.username;
+                                    const targetUser = users.find(u => u.username === rank.username);
+                                    const ratingColor = getRatingColor(targetUser ? (targetUser.rating || 0) : 0);
+                                    return `
+                                        <tr class="ranking-row" data-index="${index}">
+                                            <td class="fixed-col">${index + 1}</td>
+                                            <td style="color: ${ratingColor}; ${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
+                                            <td>${rank.score}</td>
+                                            <td class="last-ca-time" data-time="${Math.floor(rank.lastCATime)}">${rank.totalWABeforeCA}</td>
+                                            ${problemIds
+                                                .map((problemId) => {
+                                                    const problem = rank.problems[problemId] || { status: 'none', waCount: 0, time: null };
+                                                    if (problem.status === 'CA') {
+                                                        return `<td style="background-color: #90ee90;" class="problem-time" data-time="${Math.floor(problem.time) || 0}">${problem.waCount}</td>`;
+                                                    } else if (problem.status === 'WA') {
+                                                        return `<td style="background-color: #ffcccc;">+${problem.waCount}</td>`;
+                                                    } else {
+                                                        return `<td>-</td>`;
+                                                    }
+                                                })
+                                                .join('')}
+                                        </tr>
+                                    `;
+                                })
+                                .join('') || '<tr><td colspan="' + (4 + problemIds.length) + '">ランキングがありません</td></tr>'}
+                        </tbody>
                     </table>
                 </div>
                 <p><a href="${hasContestStarted(contest) ? '/contests' : '/problems'}">${hasContestStarted(contest) ? 'コンテスト一覧' : 'PROBLEMSページ'}に戻る</a></p>
@@ -1668,7 +1708,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                     max-width: 100%;
                 }
                 .ranking-table {
-                    width: auto; /* 幅をコンテンツに応じて自動調整 */
+                    width: auto;
                     border-collapse: collapse;
                 }
                 .ranking-table th, .ranking-table td {
@@ -1676,14 +1716,14 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                     text-align: center;
                     border: 1px solid #ddd;
                     white-space: nowrap;
-                    min-width: 20px; /* 各列の最小幅を設定 */
+                    min-width: 20px;
                 }
                 .fixed-col {
                     position: sticky;
                     left: 0;
                     background-color: #f8f8f8;
                     z-index: 1;
-                    min-width: 40px; /* #列は狭めに */
+                    min-width: 40px;
                 }
                 @media (max-width: 768px) {
                     .ranking-table th, .ranking-table td {
@@ -1726,6 +1766,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                 });
             </script>
         `;
+        console.log('[ランキング] HTML生成完了');
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('ランキングエラー:', err);
