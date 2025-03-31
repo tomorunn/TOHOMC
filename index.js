@@ -3027,8 +3027,182 @@ app.post('/admin/toggle-admin', async (req, res) => {
 
 // サーバー起動
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`サーバーがポート${PORT}で起動しました`);
+// 過去のコンテストを再計算する関数
+const recalculatePastContests = async () => {
+    try {
+        console.log('過去のコンテストの再計算を開始します...');
+        const users = await loadUsers();
+        const contests = await loadContests();
+
+        // ユーザーのratingとcontestHistoryをリセット
+        users.forEach(user => {
+            user.rating = 0;
+            user.contestHistory = [];
+        });
+
+        // コンテストを終了時刻の古い順にソート
+        const endedContests = contests
+            .filter(contest => !isContestNotEnded(contest))
+            .sort((a, b) => {
+                return DateTime.fromISO(a.endTime).toJSDate().getTime() - DateTime.fromISO(b.endTime).toJSDate().getTime();
+            });
+
+        // 各コンテストを順に処理
+        for (const contest of endedContests) {
+            const contestId = contests.indexOf(contest);
+            const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+
+            // コンテスト期間中の提出のみを対象
+            const submissionsDuringContest = (contest.submissions || []).filter(
+                (sub) => new Date(sub.date).getTime() <= endTime,
+            );
+
+            // 同一ユーザー・同一問題の最新の提出を保持
+            const userSubmissionsDuringContestMap = new Map();
+            submissionsDuringContest.forEach((sub) => {
+                const key = `${contestId}-${sub.user}-${sub.problemId}`;
+                const existingSub = userSubmissionsDuringContestMap.get(key);
+                if (
+                    !existingSub ||
+                    (existingSub.result !== 'CA' && sub.result === 'CA') ||
+                    (existingSub.result !== 'CA' &&
+                        sub.result !== 'CA' &&
+                        new Date(sub.date).getTime() > new Date(existingSub.date).getTime())
+                ) {
+                    userSubmissionsDuringContestMap.set(key, sub);
+                }
+            });
+            const uniqueSubmissionsDuringContest = Array.from(userSubmissionsDuringContestMap.values());
+
+            // 問題IDとスコアの設定
+            const problemIds = generateProblemIds(contest.problemCount);
+            const problemScores = {};
+            (contest.problems || []).forEach((problem) => {
+                problemScores[problem.id] = problem.score || 100;
+            });
+
+            // 各問題のdifficultyを計算
+            contest.problems.forEach(problem => {
+                problem.difficulty = calculateDifficulty(contest, problem.id, users);
+            });
+
+            // ユーザーごとの統計を計算
+            const userStats = {};
+            const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+
+            submissionsDuringContest.forEach((sub) => {
+                const username = sub.user;
+                const problemId = sub.problemId;
+                const result = sub.result;
+                const submissionTime = new Date(sub.date).getTime();
+                const timeSinceStart = (submissionTime - startTime) / 1000;
+
+                if (!userStats[username]) {
+                    userStats[username] = {
+                        score: 0,
+                        lastCATime: 0,
+                        problems: {},
+                        totalWABeforeCA: 0,
+                    };
+                }
+
+                if (!userStats[username].problems[problemId]) {
+                    userStats[username].problems[problemId] = {
+                        status: 'none',
+                        time: null,
+                        waCountBeforeCA: 0,
+                        waCount: 0,
+                    };
+                }
+
+                const problemStat = userStats[username].problems[problemId];
+
+                if (result === 'CA' && problemStat.status !== 'CA') {
+                    problemStat.status = 'CA';
+                    problemStat.time = timeSinceStart;
+                    userStats[username].score += problemScores[problemId] || 0;
+                    userStats[username].lastCATime = Math.max(
+                        userStats[username].lastCATime,
+                        timeSinceStart,
+                    );
+                } else if (result === 'WA' && problemStat.status !== 'CA') {
+                    problemStat.waCountBeforeCA += 1;
+                    problemStat.waCount += 1;
+                    problemStat.status = 'WA';
+                } else if (result === 'WA') {
+                    problemStat.waCount += 1;
+                }
+            });
+
+            // WAペナルティの計算
+            Object.keys(userStats).forEach((username) => {
+                userStats[username].totalWABeforeCA = Object.values(
+                    userStats[username].problems,
+                ).reduce((sum, p) => sum + (p.status === 'CA' ? p.waCountBeforeCA : 0), 0);
+            });
+
+            // ランキングの計算
+            const rankings = Object.keys(userStats).map((username) => {
+                const stats = userStats[username];
+                const penaltyTime = stats.totalWABeforeCA * 300;
+                return {
+                    username,
+                    score: stats.score,
+                    lastCATime: stats.lastCATime + penaltyTime,
+                    problems: stats.problems,
+                    totalWABeforeCA: stats.totalWABeforeCA,
+                };
+            });
+
+            rankings.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return a.lastCATime - b.lastCATime;
+            });
+
+            // Performanceとratingの計算
+            const userPerformances = {};
+            rankings.forEach((rank, index) => {
+                const rankPosition = index + 1;
+                const performance = calculatePerformance(contest, rank.username, rankPosition, contests);
+                userPerformances[rank.username] = performance;
+            });
+
+            // ユーザーのratingを更新し、履歴に保存
+            for (const [username, performance] of Object.entries(userPerformances)) {
+                const targetUser = users.find(u => u.username === username);
+                if (targetUser) {
+                    const newRating = updateUserRating(targetUser, performance);
+                    targetUser.contestHistory.push({
+                        contestId: contestId,
+                        contestTitle: contest.title,
+                        rank: rankings.findIndex(r => r.username === username) + 1,
+                        performance: performance,
+                        ratingAfterContest: newRating,
+                        endTime: contest.endTime,
+                    });
+                }
+            }
+
+            // コンテストにPerformanceを保存
+            contest.userPerformances = Object.entries(userPerformances).map(([username, performance]) => ({
+                username,
+                performance,
+            }));
+        }
+
+        // 更新されたデータを保存
+        await saveUsers(users);
+        await saveContests(contests);
+        console.log('過去のコンテストの再計算が完了しました。');
+    } catch (err) {
+        console.error('過去のコンテスト再計算エラー:', err);
+    }
+};
+
+// サーバー起動時に過去のコンテストを再計算
+app.listen(port, async () => {
+    console.log(`サーバーがポート${port}で起動しました`);
+    await recalculatePastContests();
 });
 
 // MongoDB接続の初期化
