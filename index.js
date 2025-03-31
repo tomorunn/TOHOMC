@@ -283,66 +283,52 @@ const calculateDifficulty = (contest, problemId, users) => {
 };
 
 // Performanceの計算: 解けた問題のdifficultyの総和 / コンテストにおける順位
+// Performance計算関数（修正）
 const calculatePerformance = (contest, username, rank, contests) => {
     console.log(`ユーザー ${username} のPerformance計算を開始します...`);
     const submissions = contest.submissions || [];
     const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+
+    // コンテスト期間中の正解提出のみを対象
     const userSubmissions = submissions.filter(
         sub => sub.user === username && sub.result === 'CA' && new Date(sub.date).getTime() <= endTime
     );
-    console.log(`ユーザー ${username} のCA提出数: ${userSubmissions.length}`);
-
     const solvedProblems = new Set(userSubmissions.map(sub => sub.problemId));
-    console.log(`ユーザー ${username} が解いた問題数: ${solvedProblems.size}`);
 
     // 解けた問題のDifficultyの総和
     let totalDifficulty = Array.from(solvedProblems).reduce((sum, problemId) => {
         const problem = contest.problems.find(p => p.id === problemId);
-        const difficulty = problem && problem.difficulty ? problem.difficulty : 100;
-        console.log(`問題 ${problemId} のDifficulty: ${difficulty}`);
-        return sum + difficulty;
+        return sum + (problem && problem.difficulty ? problem.difficulty : 100);
     }, 0);
-    console.log(`総Difficulty: ${totalDifficulty}`);
 
     // 解いた問題がない場合、最低限のDifficultyを付与
     if (solvedProblems.size === 0) {
-        console.log(`解いた問題がないため、最低Difficulty 100を付与します。`);
-        totalDifficulty = 100;
+        totalDifficulty = 100; // 未解決でも最低限のベースポイント
     }
 
-    // 順位が0の場合を防ぐ
-    if (rank === 0) {
-        console.log(`順位が0のため、Performanceをデフォルト値100に設定します。`);
-        return 100;
-    }
-
-    // Performance: (総和 / 順位) + ベースポイント
-    const basePerformance = 100;
-    const performance = (totalDifficulty / rank) + basePerformance;
-    console.log(`Performance計算: (${totalDifficulty} / ${rank}) + ${basePerformance} = ${performance}`);
+    // Performance計算: 総Difficultyを順位でスケーリング
+    const basePerformance = 100; // ベースポイント
+    const performance = totalDifficulty * Math.log10(1 + solvedProblems.size) / Math.log10(rank + 1) + basePerformance;
 
     if (isNaN(performance) || !isFinite(performance)) {
-        console.log(`PerformanceがNaNまたは無限大のため、デフォルト値100に設定します。`);
+        console.log(`Performanceが異常値のため、デフォルト値100を返します。`);
         return 100;
     }
 
-    return Math.floor(Math.max(100, performance));
+    const cappedPerformance = Math.max(100, Math.min(3000, performance));
+    console.log(`ユーザー ${username} のPerformance: ${cappedPerformance}`);
+    return Math.floor(cappedPerformance);
 };
 
-// ratingの更新: 前のrating×(9/10) + Performance×(1/10)
+// Rating更新関数（修正）
 const updateUserRating = (user, performance) => {
     console.log(`ユーザー ${user.username} のRating更新を開始します...`);
     const previousRating = user.rating || 100;
-    console.log(`前のRating: ${previousRating}, Performance: ${performance}`);
+    const effectivePerformance = Math.max(100, performance); // Performanceが低すぎないように
+    const newRating = (previousRating * 0.8) + (effectivePerformance * 0.2); // 変化を大きく
 
-    // Performanceが0でも最低限の変化を保証
-    const effectivePerformance = Math.max(100, performance);
-    const newRating = (previousRating * 0.8) + (effectivePerformance * 0.2); // 比率を変更して変化を大きく
-    console.log(`新しいRating計算: (${previousRating} * 0.8) + (${effectivePerformance} * 0.2) = ${newRating}`);
-
+    console.log(`Rating更新: (${previousRating} * 0.8) + (${effectivePerformance} * 0.2) = ${newRating}`);
     user.rating = Math.floor(newRating);
-    console.log(`更新後のRating: ${user.rating}`);
-
     return user.rating;
 };
 
@@ -1581,28 +1567,24 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
 
         // Performanceとratingの計算（コンテストが終了している場合のみ）
         if (!isContestNotEnded(contest)) {
-            // ユーザーのPerformanceを計算
             const userPerformances = {};
             rankings.forEach((rank, index) => {
                 const rankPosition = index + 1;
                 const performance = calculatePerformance(contest, rank.username, rankPosition, contests);
                 userPerformances[rank.username] = performance;
             });
-
-            // ユーザーのratingを更新し、履歴に保存
+    
             for (const [username, performance] of Object.entries(userPerformances)) {
                 const targetUser = users.find(u => u.username === username);
                 if (targetUser) {
-                    // 既にこのコンテストの履歴があるか確認
-                    const existingHistory = targetUser.contestHistory.find(history => history.contestId === contestId);
+                    const existingHistory = targetUser.contestHistory.find(h => h.contestId === contestId);
                     if (!existingHistory) {
-                        const previousRating = targetUser.rating || 0;
                         const newRating = updateUserRating(targetUser, performance);
                         targetUser.contestHistory.push({
-                            contestId: contestId,
+                            contestId,
                             contestTitle: contest.title,
                             rank: rankings.findIndex(r => r.username === username) + 1,
-                            performance: performance,
+                            performance,
                             ratingAfterContest: newRating,
                             endTime: contest.endTime,
                         });
@@ -1610,6 +1592,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                 }
             }
             await saveUsers(users);
+    
             contest.userPerformances = Object.entries(userPerformances).map(([username, performance]) => ({
                 username,
                 performance,
