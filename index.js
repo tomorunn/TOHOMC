@@ -3135,14 +3135,13 @@ const recalculatePastContests = async () => {
             return;
         }
 
-        // ユーザーのcontestHistoryのみリセット（ratingは計算過程で更新）
+        // ユーザーのcontestHistoryをリセット、ratingは維持
         users.forEach(user => {
             user.contestHistory = [];
-            // ratingが未定義の場合は初期値100を設定
             if (user.rating === undefined) {
                 user.rating = 100;
             }
-            console.log(`ユーザー ${user.username} のコンテスト履歴をリセットしました。初期rating: ${user.rating}`);
+            console.log(`ユーザー ${user.username} のコンテスト履歴をリセットしました。現在のrating: ${user.rating}`);
         });
 
         // コンテストを終了時刻の古い順にソート
@@ -3162,7 +3161,6 @@ const recalculatePastContests = async () => {
             console.log(`コンテスト "${contest.title}" の処理を開始します...`);
             const contestId = contests.indexOf(contest);
 
-            // 必須プロパティの存在チェック
             if (!contest.startTime || !contest.endTime) {
                 console.warn(`コンテスト ${contest.title} にstartTimeまたはendTimeがありません。スキップします。`);
                 continue;
@@ -3220,14 +3218,14 @@ const recalculatePastContests = async () => {
                 problemScores[problem.id] = problem.score || 100;
             });
 
-            // 現在のユーザーデータでdifficultyを計算
+            // difficultyを計算（現在のratingに依存しない）
             contest.problems.forEach(problem => {
                 try {
                     problem.difficulty = calculateDifficulty(contest, problem.id, users);
                     console.log(`問題 ${problem.id} のdifficulty: ${problem.difficulty}`);
                 } catch (err) {
                     console.error(`問題 ${problem.id} のdifficulty計算でエラー:`, err);
-                    problem.difficulty = 100; // エラー時はデフォルト値
+                    problem.difficulty = 100;
                 }
             });
 
@@ -3313,7 +3311,7 @@ const recalculatePastContests = async () => {
                     console.log(`ユーザー ${rank.username} のperformance: ${performance}`);
                 } catch (err) {
                     console.error(`ユーザー ${rank.username} のperformance計算でエラー:`, err);
-                    userPerformances[rank.username] = 0;
+                    userPerformances[rank.username] = 100; // エラー時は最低値
                 }
             });
 
@@ -3329,7 +3327,7 @@ const recalculatePastContests = async () => {
                             contestTitle: contest.title || `Contest ${contestId}`,
                             rank: rankings.findIndex(r => r.username === username) + 1,
                             performance: performance,
-                            ratingBeforeContest: previousRating, // コンテスト前のratingを記録
+                            ratingBeforeContest: previousRating,
                             ratingAfterContest: newRating,
                             endTime: contest.endTime,
                         });
