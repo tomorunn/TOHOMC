@@ -110,20 +110,25 @@ connectToMongo().catch((err) => {
 */
 
 // ユーザー情報の読み込み
+// ユーザー情報の読み込み
 const loadUsers = async () => {
     try {
         const database = await connectToMongo();
         const collection = database.collection('users');
         const users = await collection.find({}).toArray();
-        return users.length > 0 ? users : [
-            { username: 'admin', password: 'admin123', isAdmin: true },
-            { username: 'user', password: 'pass123', isAdmin: false },
+        return users.length > 0 ? users.map(user => ({
+            ...user,
+            rating: user.rating || 0,
+            contestHistory: user.contestHistory || [], // コンテスト履歴を初期化
+        })) : [
+            { username: 'admin', password: 'admin123', isAdmin: true, rating: 0, contestHistory: [] },
+            { username: 'user', password: 'pass123', isAdmin: false, rating: 0, contestHistory: [] },
         ];
     } catch (err) {
         console.error('ユーザーの読み込みエラー:', err);
         return [
-            { username: 'admin', password: 'admin123', isAdmin: true },
-            { username: 'user', password: 'pass123', isAdmin: false },
+            { username: 'admin', password: 'admin123', isAdmin: true, rating: 0, contestHistory: [] },
+            { username: 'user', password: 'pass123', isAdmin: false, rating: 0, contestHistory: [] },
         ];
     }
 };
@@ -152,16 +157,102 @@ const loadContests = async () => {
             ...contest,
             testers: contest.testers || [],
             writers: contest.writers || [],
-            problems: contest.problems || [],
+            problems: contest.problems?.map(problem => ({
+                ...problem,
+                difficulty: problem.difficulty || 0, // 問題にdifficultyを追加
+            })) || [],
             managers: contest.managers || [],
             submissions: contest.submissions || [],
             review: contest.review || '',
-            submissionLimit: contest.submissionLimit || 10, // デフォルトを10に設定
+            submissionLimit: contest.submissionLimit || 10,
+            userPerformances: contest.userPerformances || [], // ユーザーのPerformanceを保存
         }));
     } catch (err) {
         console.error('コンテストの読み込みエラー:', err);
         return [];
     }
+};
+
+// Difficulty, Performance, Rating 計算関数
+const calculateDifficulty = (contest, problemId, users) => {
+    const submissions = contest.submissions || [];
+    const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+    const submissionsDuringContest = submissions.filter(sub => new Date(sub.date).getTime() <= endTime);
+
+    // P: コンテストに参加した人数
+    const participants = new Set(submissionsDuringContest.map(sub => sub.user));
+    const P = participants.size;
+
+    // S: 問題に回答した人数
+    const submitters = new Set(submissionsDuringContest.filter(sub => sub.problemId === problemId).map(sub => sub.user));
+    const S = submitters.size;
+
+    // C: CAで終わった人数
+    const caSubmissions = submissionsDuringContest.filter(sub => sub.problemId === problemId && sub.result === 'CA');
+    const caUsers = new Set(caSubmissions.map(sub => sub.user));
+    const C = caUsers.size;
+
+    // W: WAで終わった人数
+    const waSubmissions = submissionsDuringContest.filter(sub => sub.problemId === problemId && sub.result === 'WA');
+    const waUsers = new Set(waSubmissions.map(sub => sub.user));
+    const W = waUsers.size;
+
+    // SR: 回答した人のratingの平均
+    const submitterRatings = Array.from(submitters).map(username => {
+        const user = users.find(u => u.username === username);
+        return user ? user.rating : 0;
+    });
+    const SR = submitterRatings.length > 0 ? submitterRatings.reduce((sum, r) => sum + r, 0) / submitterRatings.length : 0;
+
+    // NSR: 回答しなかった人のratingの平均
+    const nonSubmitters = Array.from(participants).filter(username => !submitters.has(username));
+    const nonSubmitterRatings = nonSubmitters.map(username => {
+        const user = users.find(u => u.username === username);
+        return user ? user.rating : 0;
+    });
+    const NSR = nonSubmitterRatings.length > 0 ? nonSubmitterRatings.reduce((sum, r) => sum + r, 0) / nonSubmitterRatings.length : 0;
+
+    // WR: WAした人のratingの平均
+    const waRatings = Array.from(waUsers).map(username => {
+        const user = users.find(u => u.username === username);
+        return user ? user.rating : 0;
+    });
+    const WR = waRatings.length > 0 ? waRatings.reduce((sum, r) => sum + r, 0) / waRatings.length : 0;
+
+    // PR: コンテストに参加した人のratingの平均
+    const participantRatings = Array.from(participants).map(username => {
+        const user = users.find(u => u.username === username);
+        return user ? user.rating : 0;
+    });
+    const PR = participantRatings.length > 0 ? participantRatings.reduce((sum, r) => sum + r, 0) / participantRatings.length : 0;
+
+    // Difficulty 計算: (WR + NSR) * (W/S) + SR * (S/C) - PR
+    let difficulty = 0;
+    if (S > 0 && C > 0) {
+        difficulty = (WR + NSR) * (W / S) + SR * (S / C) - PR;
+    }
+    return Math.floor(difficulty); // 小数点以下切り捨て
+};
+
+const calculatePerformance = (contest, username, rank, contests) => {
+    const solvedProblems = new Set(
+        (contest.submissions || [])
+            .filter(sub => sub.user === username && sub.result === 'CA')
+            .map(sub => sub.problemId)
+    );
+    const totalDifficulty = Array.from(solvedProblems).reduce((sum, problemId) => {
+        const problem = contest.problems.find(p => p.id === problemId);
+        return sum + (problem ? problem.difficulty : 0);
+    }, 0);
+    // Performance 計算: 解けた問題のdifficultyの総和 / 順位
+    return rank > 0 ? Math.floor(totalDifficulty / rank) : 0; // 小数点以下切り捨て
+};
+
+const updateUserRating = (user, performance) => {
+    // Rating 計算: 前のrating * 9/10 + Performance * 1/10
+    const newRating = Math.floor(user.rating * (9 / 10) + performance * (1 / 10));
+    user.rating = newRating;
+    return newRating;
 };
 
 // コンテストの保存
@@ -181,8 +272,21 @@ const saveContests = async (contests) => {
 };
 
 // ナビゲーション生成関数
+// ratingに基づく色を決定する関数
+const getRatingColor = (rating) => {
+    if (rating >= 2801) return 'red';
+    if (rating >= 2401) return 'orange';
+    if (rating >= 2001) return 'yellow';
+    if (rating >= 1601) return 'blue';
+    if (rating >= 1201) return 'cyan';
+    if (rating >= 801) return 'green';
+    if (rating >= 401) return 'brown';
+    return 'gray';
+};
+
 const generateNav = (user) => {
     if (user) {
+        const ratingColor = getRatingColor(user.rating || 0);
         return `
             <nav class="nav">
                 <div class="nav-container">
@@ -193,7 +297,7 @@ const generateNav = (user) => {
                         <li><a href="/contests">コンテスト</a></li>
                         <li><a href="/problems">PROBLEMS</a></li>
                         <li><a href="/admin">管理者ダッシュボード</a></li>
-                        <li class="username" style="color: white;">Hi, ${user.username}</li>
+                        <li class="username"><a href="/mypage" style="color: ${ratingColor};">Hi, ${user.username}</a></li>
                         <li><a href="/logout">ログアウト</a></li>
                     </ul>
                 </div>
@@ -648,6 +752,7 @@ app.post('/register', async (req, res) => {
 });
 
 // ルート：管理者ダッシュボード
+// ルート：管理者ダッシュボード
 app.get('/admin', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -672,10 +777,14 @@ app.get('/admin', async (req, res) => {
                                 return `
                                     <li>
                                         ${contest.title} (開始: ${start}, 終了: ${end}, 状態: ${status})
-                                        <form id="delete-form-${index}" action="/admin/delete-contest" method="POST" style="display:inline;">
-                                            <input type="hidden" name="index" value="${index}">
-                                            <button type="button" onclick="confirmDeletion('delete-form-${index}')">削除</button>
-                                        </form>
+                                        ${
+                                            user.isAdmin // サイト管理者のみに削除ボタンを表示
+                                            ? `<form id="delete-form-${index}" action="/admin/delete-contest" method="POST" style="display:inline;">
+                                                <input type="hidden" name="index" value="${index}">
+                                                <button type="button" onclick="confirmDeletion('delete-form-${index}')">削除</button>
+                                            </form>`
+                                            : ''
+                                        }
                                         <a href="/admin/contest-details/${index}">詳細</a>
                                         <a href="/admin/edit-contest/${index}">編集</a>
                                     </li>
@@ -881,24 +990,20 @@ app.post('/admin/add-contest', async (req, res) => {
 });
 
 // ルート：コンテスト削除
+// ルート：コンテスト削除
 app.post('/admin/delete-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        // ログインしていない、または管理者権限がない場合はエラー
-        if (!user) {
-            return res.redirect('/login');
-        }
-        if (!user.isAdmin) {
-            return res.status(403).send('管理者権限がないため、コンテストを削除できません。');
-        }
+        if (!user || !user.isAdmin) return res.redirect('/login'); // サイト管理者でない場合はログイン画面へ
         const { index } = req.body;
         const contests = await loadContests();
         const idx = parseInt(index);
         if (idx >= 0 && idx < contests.length) {
+            // サイト管理者のみが削除可能（canManageContestのチェックを削除）
             contests.splice(idx, 1);
             await saveContests(contests);
         } else {
-            return res.status(404).send('指定されたコンテストが見つかりません。');
+            return res.status(404).send('無効なコンテストIDです');
         }
         res.redirect('/admin');
     } catch (err) {
@@ -1150,6 +1255,7 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
+        const users = await loadUsers();
         const contestId = parseInt(req.params.contestId);
 
         if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
@@ -1157,12 +1263,10 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
         }
 
         const contest = contests[contestId];
-        const nav = generateNav(user);
         const submissions = contest.submissions || [];
-        let filteredSubmissions = canManageContest(user, contest)
-            ? submissions
-            : submissions.filter((sub) => sub.user === user.username);
+        submissions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+        const nav = generateNav(user);
         const content = `
             <section class="hero">
                 <h2>${contest.title} - 提出一覧</h2>
@@ -1171,36 +1275,70 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
                     <a href="/contest/${contestId}/submissions" class="tab active">提出一覧</a>
                     <a href="/contest/${contestId}/ranking" class="tab">ランキング</a>
                 </div>
-                <table class="result-table">
-                    <tr><th>Date</th><th>Problem</th><th>User</th><th>Result</th><th>Answer</th></tr>
-                    ${
-                        filteredSubmissions
-                            .map((sub) => {
-                                const style =
-                                    sub.result === 'CA'
-                                        ? 'background-color: #90ee90'
-                                        : sub.result === 'WA'
-                                        ? 'background-color: #ffcccc'
-                                        : '';
-                                return `
-                                    <tr>
-                                        <td>${DateTime.fromISO(sub.date, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm:ss')}</td>
-                                        <td>${sub.problemId}</td>
-                                        <td>${sub.user}</td>
-                                        <td style="${style}">${sub.result}</td>
-                                        <td>${sub.answer}</td>
-                                    </tr>
-                                `;
-                            })
-                            .join('') || '<tr><td colspan="5">提出履歴がありません</td></tr>'
-                    }
+                <table class="submission-table">
+                    <thead>
+                        <tr>
+                            <th>提出日時</th>
+                            <th>ユーザー</th>
+                            <th>問題</th>
+                            <th>結果</th>
+                            <th>詳細</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${
+                            submissions.length > 0
+                                ? submissions
+                                      .map((sub) => {
+                                          const date = DateTime.fromISO(sub.date, { zone: 'Asia/Tokyo' }).toFormat('yyyy/MM/dd HH:mm:ss');
+                                          const targetUser = users.find(u => u.username === sub.user);
+                                          const ratingColor = getRatingColor(targetUser ? (targetUser.rating || 0) : 0);
+                                          return `
+                                              <tr>
+                                                  <td>${date}</td>
+                                                  <td style="color: ${ratingColor};">${sub.user}</td>
+                                                  <td>${sub.problemId}</td>
+                                                  <td class="${sub.result === 'CA' ? 'ca' : 'wa'}">${sub.result}</td>
+                                                  <td><a href="/submission/${contestId}/${submissions.indexOf(sub)}">詳細</a></td>
+                                              </tr>
+                                          `;
+                                      })
+                                      .join('')
+                                : '<tr><td colspan="5">提出がありません</td></tr>'
+                        }
+                    </tbody>
                 </table>
-                <p><a href="${
-                    hasContestStarted(contest) ? '/contests' : '/problems'
-                }">${
-                    hasContestStarted(contest) ? 'コンテスト一覧' : 'PROBLEMSページ'
-                }に戻る</a></p>
+                <p><a href="${hasContestStarted(contest) ? '/contests' : '/problems'}">${hasContestStarted(contest) ? 'コンテスト一覧' : 'PROBLEMSページ'}に戻る</a></p>
             </section>
+            <style>
+                .submission-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                }
+                .submission-table th, .submission-table td {
+                    padding: 10px;
+                    text-align: center;
+                    border: 1px solid #ddd;
+                }
+                .submission-table th {
+                    background-color: #f2f2f2;
+                }
+                .submission-table .ca {
+                    color: green;
+                    font-weight: bold;
+                }
+                .submission-table .wa {
+                    color: red;
+                }
+                .submission-table a {
+                    color: #007bff;
+                    text-decoration: none;
+                }
+                .submission-table a:hover {
+                    text-decoration: underline;
+                }
+            </style>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
@@ -1210,11 +1348,13 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
 });
 
 // ルート：ランキング
+// ルート：ランキング
 app.get('/contest/:contestId/ranking', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
+        const users = await loadUsers();
         const contestId = parseInt(req.params.contestId);
 
         if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
@@ -1250,6 +1390,11 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         const problemScores = {};
         (contest.problems || []).forEach((problem) => {
             problemScores[problem.id] = problem.score || 100;
+        });
+
+        // 各問題のdifficultyを計算
+        contest.problems.forEach(problem => {
+            problem.difficulty = calculateDifficulty(contest, problem.id, users);
         });
 
         const userStats = {};
@@ -1331,6 +1476,44 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
             return a.lastCATime - b.lastCATime;
         });
 
+        // Performanceとratingの計算（コンテストが終了している場合のみ）
+        if (!isContestNotEnded(contest)) {
+            // ユーザーのPerformanceを計算
+            const userPerformances = {};
+            rankings.forEach((rank, index) => {
+                const rankPosition = index + 1;
+                const performance = calculatePerformance(contest, rank.username, rankPosition, contests);
+                userPerformances[rank.username] = performance;
+            });
+
+            // ユーザーのratingを更新し、履歴に保存
+            for (const [username, performance] of Object.entries(userPerformances)) {
+                const targetUser = users.find(u => u.username === username);
+                if (targetUser) {
+                    // 既にこのコンテストの履歴があるか確認
+                    const existingHistory = targetUser.contestHistory.find(history => history.contestId === contestId);
+                    if (!existingHistory) {
+                        const previousRating = targetUser.rating || 0;
+                        const newRating = updateUserRating(targetUser, performance);
+                        targetUser.contestHistory.push({
+                            contestId: contestId,
+                            contestTitle: contest.title,
+                            rank: rankings.findIndex(r => r.username === username) + 1,
+                            performance: performance,
+                            ratingAfterContest: newRating,
+                            endTime: contest.endTime,
+                        });
+                    }
+                }
+            }
+            await saveUsers(users);
+            contest.userPerformances = Object.entries(userPerformances).map(([username, performance]) => ({
+                username,
+                performance,
+            }));
+            await saveContests(contests);
+        }
+
         const nav = generateNav(user);
         const content = `
             <section class="hero">
@@ -1360,32 +1543,34 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                             </tr>
                         </thead>
                         <tbody>
-                            ${rankings
-                                .map((rank, index) => {
-                                    const isCurrentUser = rank.username === user.username;
-                                    return `
-                                        <tr class="ranking-row" data-index="${index}">
-                                            <td class="fixed-col">${index + 1}</td>
-                                            <td style="${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
-                                            <td>${rank.score}</td>
-                                            <td class="last-ca-time" data-time="${Math.floor(rank.lastCATime)}">${rank.totalWABeforeCA}</td>
-                                            ${problemIds
-                                                .map((problemId) => {
-                                                    const problem = rank.problems[problemId] || { status: 'none', waCount: 0, time: null };
-                                                    if (problem.status === 'CA') {
-                                                        return `<td style="background-color: #90ee90;" class="problem-time" data-time="${Math.floor(problem.time) || 0}">${problem.waCount}</td>`;
-                                                    } else if (problem.status === 'WA') {
-                                                        return `<td style="background-color: #ffcccc;">+${problem.waCount}</td>`;
-                                                    } else {
-                                                        return `<td>-</td>`;
-                                                    }
-                                                })
-                                                .join('')}
-                                        </tr>
-                                    `;
-                                })
-                                .join('') || '<tr><td colspan="' + (4 + problemIds.length) + '">ランキングがありません</td></tr>'}
-                        </tbody>
+    ${rankings
+        .map((rank, index) => {
+            const isCurrentUser = rank.username === user.username;
+            const targetUser = users.find(u => u.username === rank.username);
+            const ratingColor = getRatingColor(targetUser ? (targetUser.rating || 0) : 0);
+            return `
+                <tr class="ranking-row" data-index="${index}">
+                    <td class="fixed-col">${index + 1}</td>
+                    <td style="color: ${ratingColor}; ${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
+                    <td>${rank.score}</td>
+                    <td class="last-ca-time" data-time="${Math.floor(rank.lastCATime)}">${rank.totalWABeforeCA}</td>
+                    ${problemIds
+                        .map((problemId) => {
+                            const problem = rank.problems[problemId] || { status: 'none', waCount: 0, time: null };
+                            if (problem.status === 'CA') {
+                                return `<td style="background-color: #90ee90;" class="problem-time" data-time="${Math.floor(problem.time) || 0}">${problem.waCount}</td>`;
+                            } else if (problem.status === 'WA') {
+                                return `<td style="background-color: #ffcccc;">+${problem.waCount}</td>`;
+                            } else {
+                                return `<td>-</td>`;
+                            }
+                        })
+                        .join('')}
+                </tr>
+            `;
+        })
+        .join('') || '<tr><td colspan="' + (4 + problemIds.length) + '">ランキングがありません</td></tr>'}
+</tbody>
                     </table>
                 </div>
                 <p><a href="${hasContestStarted(contest) ? '/contests' : '/problems'}">${hasContestStarted(contest) ? 'コンテスト一覧' : 'PROBLEMSページ'}に戻る</a></p>
@@ -1458,6 +1643,113 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('ランキングエラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+// ルート：マイページ
+// ルート：マイページ
+app.get('/mypage', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user) return res.redirect('/login');
+        const contests = await loadContests();
+        const nav = generateNav(user);
+
+        // コンテスト履歴を終了時間でソート（新しい順）
+        const sortedHistory = user.contestHistory.sort((a, b) => {
+            return DateTime.fromISO(b.endTime).toJSDate().getTime() - DateTime.fromISO(a.endTime).toJSDate().getTime();
+        });
+
+        const content = `
+            <section class="hero">
+                <h2>マイページ</h2>
+                <div class="rating-display">
+                    <h3>現在のRating: <span class="rating-value">${user.rating || 0}</span></h3>
+                </div>
+                <h3>コンテスト履歴</h3>
+                <div class="table-wrapper">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>コンテスト</th>
+                                <th>順位</th>
+                                <th>Performance</th>
+                                <th>終了時点のRating</th>
+                                <th>終了日時</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${
+                                sortedHistory.length > 0
+                                    ? sortedHistory.map(history => {
+                                          const endTime = DateTime.fromISO(history.endTime, { zone: 'Asia/Tokyo' }).toFormat('yyyy/MM/dd HH:mm');
+                                          return `
+                                              <tr>
+                                                  <td><a href="/contest/${history.contestId}">${history.contestTitle}</a></td>
+                                                  <td>${history.rank}</td>
+                                                  <td>${history.performance}</td>
+                                                  <td>${history.ratingAfterContest}</td>
+                                                  <td>${endTime}</td>
+                                              </tr>
+                                          `;
+                                      }).join('')
+                                    : '<tr><td colspan="5">コンテスト履歴がありません</td></tr>'
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p><a href="/">ホームに戻る</a></p>
+            </section>
+            <style>
+                .rating-display {
+                    margin: 20px 0;
+                    padding: 20px;
+                    background-color: #f0f8ff;
+                    border-radius: 8px;
+                    text-align: center;
+                }
+                .rating-value {
+                    font-size: 2em;
+                    font-weight: bold;
+                    color: #2e8b57;
+                }
+                .table-wrapper {
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
+                    max-width: 100%;
+                }
+                .history-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                }
+                .history-table th, .history-table td {
+                    padding: 10px;
+                    text-align: center;
+                    border: 1px solid #ddd;
+                }
+                .history-table th {
+                    background-color: #f2f2f2;
+                }
+                .history-table a {
+                    color: #007bff;
+                    text-decoration: none;
+                }
+                .history-table a:hover {
+                    text-decoration: underline;
+                }
+                @media (max-width: 768px) {
+                    .history-table th, .history-table td {
+                        font-size: 0.9em;
+                        padding: 6px;
+                    }
+                }
+            </style>
+        `;
+        res.send(generatePage(nav, content));
+    } catch (err) {
+        console.error('マイページエラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
@@ -1855,12 +2147,20 @@ app.get('/problems', async (req, res) => {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
+        const users = await loadUsers(); // ユーザーデータを取得してdifficulty計算に使用
         const nav = generateNav(user);
         const endedContests = contests.filter((contest) => !isContestNotEnded(contest));
 
         // すべてのコンテストの中で最大の問題数を求める
         const maxProblemCount = Math.max(...endedContests.map(contest => contest.problemCount || 0), 0);
         const problemIds = generateProblemIds(maxProblemCount); // 最大問題数に基づいて問題IDを生成
+
+        // 各問題のdifficultyを計算
+        endedContests.forEach(contest => {
+            contest.problems.forEach(problem => {
+                problem.difficulty = calculateDifficulty(contest, problem.id, users);
+            });
+        });
 
         const content = `
             <section class="hero">
@@ -1913,7 +2213,8 @@ app.get('/problems', async (req, res) => {
                                                         );
                                                         const isCA = userSubmissions.some((sub) => sub.result === 'CA');
                                                         return `
-                                                            <td style="background-color: ${isCA ? '#90ee90' : 'white'};">
+                                                            <td style="background-color: ${isCA ? '#90ee90' : 'white'}; position: relative;">
+                                                                <span class="difficulty-circle" onclick="showDifficulty(${problem.difficulty})">○</span>
                                                                 <a href="/contest/${contests.indexOf(contest)}/submit/${problem.id}">
                                                                     ${problem.id}
                                                                 </a>
@@ -1972,6 +2273,22 @@ app.get('/problems', async (req, res) => {
                 .contest-table a:hover {
                     text-decoration: underline;
                 }
+                .difficulty-circle {
+                    position: absolute;
+                    left: 5px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    background-color: #d3e8d3;
+                    color: #333;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    font-size: 12px;
+                }
                 @media (max-width: 768px) {
                     .contest-table th, .contest-table td {
                         font-size: 0.9em;
@@ -1980,8 +2297,18 @@ app.get('/problems', async (req, res) => {
                     .contest-table .fixed-col {
                         min-width: 200px;
                     }
+                    .difficulty-circle {
+                        width: 16px;
+                        height: 16px;
+                        font-size: 10px;
+                    }
                 }
             </style>
+            <script>
+                function showDifficulty(difficulty) {
+                    alert('Difficulty: ' + difficulty);
+                }
+            </script>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
