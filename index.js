@@ -3135,12 +3135,15 @@ const recalculatePastContests = async () => {
             return;
         }
 
-// ユーザーのratingとcontestHistoryをリセット（初期ratingを100に設定）
-users.forEach(user => {
-    user.rating = 100; // 初期ratingを100に設定
-    user.contestHistory = [];
-    console.log(`ユーザー ${user.username} の初期ratingを100に設定しました。`);
-});
+        // ユーザーのcontestHistoryのみリセット（ratingは計算過程で更新）
+        users.forEach(user => {
+            user.contestHistory = [];
+            // ratingが未定義の場合は初期値100を設定
+            if (user.rating === undefined) {
+                user.rating = 100;
+            }
+            console.log(`ユーザー ${user.username} のコンテスト履歴をリセットしました。初期rating: ${user.rating}`);
+        });
 
         // コンテストを終了時刻の古い順にソート
         const endedContests = contests
@@ -3217,7 +3220,7 @@ users.forEach(user => {
                 problemScores[problem.id] = problem.score || 100;
             });
 
-            // 各問題のdifficultyを計算
+            // 現在のユーザーデータでdifficultyを計算
             contest.problems.forEach(problem => {
                 try {
                     problem.difficulty = calculateDifficulty(contest, problem.id, users);
@@ -3307,6 +3310,7 @@ users.forEach(user => {
                 try {
                     const performance = calculatePerformance(contest, rank.username, rankPosition, contests);
                     userPerformances[rank.username] = performance;
+                    console.log(`ユーザー ${rank.username} のperformance: ${performance}`);
                 } catch (err) {
                     console.error(`ユーザー ${rank.username} のperformance計算でエラー:`, err);
                     userPerformances[rank.username] = 0;
@@ -3318,15 +3322,18 @@ users.forEach(user => {
                 const targetUser = users.find(u => u.username === username);
                 if (targetUser) {
                     try {
+                        const previousRating = targetUser.rating;
                         const newRating = updateUserRating(targetUser, performance);
                         targetUser.contestHistory.push({
                             contestId: contestId,
                             contestTitle: contest.title || `Contest ${contestId}`,
                             rank: rankings.findIndex(r => r.username === username) + 1,
                             performance: performance,
+                            ratingBeforeContest: previousRating, // コンテスト前のratingを記録
                             ratingAfterContest: newRating,
                             endTime: contest.endTime,
                         });
+                        console.log(`ユーザー ${username} のrating更新: ${previousRating} -> ${newRating}`);
                     } catch (err) {
                         console.error(`ユーザー ${username} のrating更新でエラー:`, err);
                     }
@@ -3340,6 +3347,7 @@ users.forEach(user => {
                 username,
                 performance,
             }));
+            console.log(`コンテスト "${contest.title}" のuserPerformancesを保存しました。`);
         }
 
         // 更新されたデータを保存
