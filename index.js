@@ -12,6 +12,17 @@ const app = express();
 
 require('dotenv').config();
 
+const getUsernameColor = (rating) => {
+    if (rating <= 400) return '#808080'; // 灰色
+    if (rating <= 800) return '#8B4513'; // 茶色
+    if (rating <= 1200) return '#008000'; // 緑色
+    if (rating <= 1600) return '#00CED1'; // 水色
+    if (rating <= 2000) return '#0000FF'; // 青色
+    if (rating <= 2400) return '#FFFF00'; // 黄色
+    if (rating <= 2800) return '#FFA500'; // 橙色
+    return '#FF0000'; // 赤色
+};
+
 // Cloudinaryの設定をコードの先頭に追加（app.listenの前あたりに記述）
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -269,6 +280,7 @@ const saveContests = async (contests) => {
 // ナビゲーション生成関数
 const generateNav = (user) => {
     if (user) {
+        const usernameColor = getUsernameColor(user.rating);
         return `
             <nav class="nav">
                 <div class="nav-container">
@@ -279,7 +291,7 @@ const generateNav = (user) => {
                         <li><a href="/contests">コンテスト</a></li>
                         <li><a href="/problems">PROBLEMS</a></li>
                         <li><a href="/admin">管理者ダッシュボード</a></li>
-                        <li class="username" style="color: white;">Hi, ${user.username}</li>
+                        <li><a href="/mypage" class="username" style="color: ${usernameColor};">Hi, ${user.username}</a></li>
                         <li><a href="/logout">ログアウト</a></li>
                     </ul>
                 </div>
@@ -1232,11 +1244,12 @@ app.get('/contest/:contestId/review', async (req, res) => {
 });
 
 // ルート：提出一覧
-app.get('/contest/:contestId/submissions', async (req, res) => {
+aapp.get('/contest/:contestId/submissions', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
+        const users = await loadUsers();
         const contestId = parseInt(req.params.contestId);
 
         if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
@@ -1269,11 +1282,13 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
                                         : sub.result === 'WA'
                                         ? 'background-color: #ffcccc'
                                         : '';
+                                const targetUser = users.find(u => u.username === sub.user);
+                                const usernameColor = targetUser ? getUsernameColor(targetUser.rating) : '#000000';
                                 return `
                                     <tr>
                                         <td>${DateTime.fromISO(sub.date, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm:ss')}</td>
                                         <td>${sub.problemId}</td>
-                                        <td>${sub.user}</td>
+                                        <td style="color: ${usernameColor};">${sub.user}</td>
                                         <td style="${style}">${sub.result}</td>
                                         <td>${sub.answer}</td>
                                     </tr>
@@ -1302,6 +1317,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
+        const users = await loadUsers();
         const contestId = parseInt(req.params.contestId);
 
         if (isNaN(contestId) || contestId < 0 || contestId >= contests.length) {
@@ -1337,6 +1353,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         const problemScores = {};
         (contest.problems || []).forEach((problem) => {
             problemScores[problem.id] = problem.score || 100;
+            problem.difficulty = calculateDifficulty(contest, problem.id, users);
         });
 
         const userStats = {};
@@ -1418,6 +1435,39 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
             return a.lastCATime - b.lastCATime;
         });
 
+        if (!isContestNotEnded(contest) && !contest.userPerformances) {
+            contest.userPerformances = [];
+            for (let i = 0; i < rankings.length; i++) {
+                const rankEntry = rankings[i];
+                const username = rankEntry.username;
+                const rank = i + 1;
+                const performance = calculatePerformance(contest, username, rank, contests);
+                const targetUser = users.find(u => u.username === username);
+                if (targetUser) {
+                    const preRating = targetUser.rating;
+                    const newRating = updateUserRating(targetUser, performance);
+                    contest.userPerformances.push({
+                        username,
+                        rank,
+                        performance,
+                        rating: newRating,
+                    });
+                    targetUser.contestHistory = targetUser.contestHistory || [];
+                    targetUser.contestHistory.push({
+                        contestId,
+                        title: contest.title,
+                        rank,
+                        performance,
+                        rating: newRating,
+                        preRating,
+                        endTime: contest.endTime,
+                    });
+                }
+            }
+            await saveContests(contests);
+            await saveUsers(users);
+        }
+
         const nav = generateNav(user);
         const content = `
             <section class="hero">
@@ -1450,10 +1500,12 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                             ${rankings
                                 .map((rank, index) => {
                                     const isCurrentUser = rank.username === user.username;
+                                    const targetUser = users.find(u => u.username === rank.username);
+                                    const usernameColor = targetUser ? getUsernameColor(targetUser.rating) : '#000000';
                                     return `
                                         <tr class="ranking-row" data-index="${index}">
                                             <td class="fixed-col">${index + 1}</td>
-                                            <td style="${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
+                                            <td style="color: ${usernameColor}; ${isCurrentUser ? 'font-weight: bold;' : ''}">${rank.username}</td>
                                             <td>${rank.score}</td>
                                             <td class="last-ca-time" data-time="${Math.floor(rank.lastCATime)}">${rank.totalWABeforeCA}</td>
                                             ${problemIds
@@ -1484,7 +1536,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                     max-width: 100%;
                 }
                 .ranking-table {
-                    width: auto; /* 幅をコンテンツに応じて自動調整 */
+                    width: auto;
                     border-collapse: collapse;
                 }
                 .ranking-table th, .ranking-table td {
@@ -1492,14 +1544,14 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                     text-align: center;
                     border: 1px solid #ddd;
                     white-space: nowrap;
-                    min-width: 20px; /* 各列の最小幅を設定 */
+                    min-width: 20px;
                 }
                 .fixed-col {
                     position: sticky;
                     left: 0;
                     background-color: #f8f8f8;
                     z-index: 1;
-                    min-width: 40px; /* #列は狭めに */
+                    min-width: 40px;
                 }
                 @media (max-width: 768px) {
                     .ranking-table th, .ranking-table td {
@@ -1545,6 +1597,98 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('ランキングエラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+app.get('/mypage', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user) return res.redirect('/login');
+        const contests = await loadContests();
+        const nav = generateNav(user);
+        const usernameColor = getUsernameColor(user.rating);
+
+        // 過去のコンテスト履歴を日付順にソート
+        const history = (user.contestHistory || []).sort((a, b) => {
+            return DateTime.fromISO(b.endTime).toJSDate().getTime() - DateTime.fromISO(a.endTime).toJSDate().getTime();
+        });
+
+        const content = `
+            <section class="hero">
+                <h2>マイページ</h2>
+                <div class="user-info">
+                    <h3 style="color: ${usernameColor};">${user.username}</h3>
+                    <p class="rating-display">現在のRating: <span style="color: ${usernameColor};">${user.rating}</span></p>
+                </div>
+                <h3>過去のコンテスト履歴</h3>
+                <table class="history-table">
+                    <tr>
+                        <th>コンテスト</th>
+                        <th>終了日時</th>
+                        <th>順位</th>
+                        <th>Performance</th>
+                        <th>Rating (変更)</th>
+                    </tr>
+                    ${
+                        history.length > 0
+                            ? history
+                                .map((entry) => {
+                                    const endTime = DateTime.fromISO(entry.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
+                                    const ratingChange = entry.rating - entry.preRating;
+                                    const ratingChangeDisplay = ratingChange >= 0 ? `+${ratingChange}` : ratingChange;
+                                    const ratingColor = getUsernameColor(entry.rating);
+                                    return `
+                                        <tr>
+                                            <td><a href="/contest/${entry.contestId}">${entry.title}</a></td>
+                                            <td>${endTime}</td>
+                                            <td>${entry.rank}</td>
+                                            <td>${entry.performance}</td>
+                                            <td style="color: ${ratingColor};">${entry.rating} (${ratingChangeDisplay})</td>
+                                        </tr>
+                                    `;
+                                })
+                                .join('')
+                            : '<tr><td colspan="5">参加したコンテストがありません</td></tr>'
+                    }
+                </table>
+                <p><a href="/">ホームに戻る</a></p>
+            </section>
+            <style>
+                .user-info {
+                    text-align: center;
+                    margin-bottom: 30px;
+                }
+                .rating-display {
+                    font-size: 2em;
+                    font-weight: bold;
+                    margin: 10px 0;
+                }
+                .history-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                }
+                .history-table th, .history-table td {
+                    border: 1px solid #ddd;
+                    padding: 8px;
+                    text-align: center;
+                }
+                .history-table th {
+                    background-color: #f2f2f2;
+                }
+                .history-table a {
+                    color: #007bff;
+                    text-decoration: none;
+                }
+                .history-table a:hover {
+                    text-decoration: underline;
+                }
+            </style>
+        `;
+        res.send(generatePage(nav, content));
+    } catch (err) {
+        console.error('マイページエラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
@@ -1942,12 +2086,24 @@ app.get('/problems', async (req, res) => {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
+        const users = await loadUsers(); // ユーザーデータを取得してdifficulty計算に使用
         const nav = generateNav(user);
         const endedContests = contests.filter((contest) => !isContestNotEnded(contest));
 
         // すべてのコンテストの中で最大の問題数を求める
         const maxProblemCount = Math.max(...endedContests.map(contest => contest.problemCount || 0), 0);
-        const problemIds = generateProblemIds(maxProblemCount); // 最大問題数に基づいて問題IDを生成
+        const problemIds = generateProblemIds(maxProblemCount);
+
+        // 各問題のdifficultyを事前に計算
+        const difficulties = {};
+        for (const contest of endedContests) {
+            const contestId = contests.indexOf(contest);
+            difficulties[contestId] = {};
+            for (const problem of contest.problems) {
+                const difficulty = calculateDifficulty(contest, problem.id, users);
+                difficulties[contestId][problem.id] = difficulty;
+            }
+        }
 
         const content = `
             <section class="hero">
@@ -1987,7 +2143,7 @@ app.get('/problems', async (req, res) => {
                                                 ${problemIds
                                                     .map((problemId) => {
                                                         if (!contestProblemIds.includes(problemId)) {
-                                                            return `<td>-</td>`; // 問題が存在しない場合は「-」を表示
+                                                            return `<td>-</td>`;
                                                         }
                                                         const problem = contest.problems.find((p) => p.id === problemId);
                                                         if (!problem) {
@@ -1999,8 +2155,12 @@ app.get('/problems', async (req, res) => {
                                                                 sub.problemId === problemId,
                                                         );
                                                         const isCA = userSubmissions.some((sub) => sub.result === 'CA');
+                                                        const contestId = contests.indexOf(contest);
+                                                        const difficulty = difficulties[contestId][problemId];
                                                         return `
-                                                            <td style="background-color: ${isCA ? '#90ee90' : 'white'};">
+                                                            <td style="background-color: ${isCA ? '#90ee90' : 'white'}; position: relative;">
+                                                                <span class="difficulty-circle" onclick="showDifficulty(${contestId}, '${problemId}', ${difficulty})">●</span>
+                                                                <span id="difficulty-${contestId}-${problemId}" class="difficulty-display"></span>
                                                                 <a href="/contest/${contests.indexOf(contest)}/submit/${problem.id}">
                                                                     ${problem.id}
                                                                 </a>
@@ -2024,7 +2184,7 @@ app.get('/problems', async (req, res) => {
                     overflow-y: auto;
                     -webkit-overflow-scrolling: touch;
                     max-width: 100%;
-                    max-height: 600px; /* 縦スクロール用の高さ制限 */
+                    max-height: 600px;
                 }
                 .contest-table {
                     width: auto;
@@ -2059,6 +2219,23 @@ app.get('/problems', async (req, res) => {
                 .contest-table a:hover {
                     text-decoration: underline;
                 }
+                .difficulty-circle {
+                    color: #888;
+                    font-size: 0.8em;
+                    cursor: pointer;
+                    margin-right: 5px;
+                }
+                .difficulty-display {
+                    display: none;
+                    position: absolute;
+                    background-color: #fff;
+                    border: 1px solid #ccc;
+                    padding: 5px;
+                    z-index: 10;
+                    top: 50%;
+                    left: 20px;
+                    transform: translateY(-50%);
+                }
                 @media (max-width: 768px) {
                     .contest-table th, .contest-table td {
                         font-size: 0.9em;
@@ -2069,6 +2246,20 @@ app.get('/problems', async (req, res) => {
                     }
                 }
             </style>
+            <script>
+                function showDifficulty(contestId, problemId, difficulty) {
+                    const display = document.getElementById(\`difficulty-\${contestId}-\${problemId}\`);
+                    if (display.style.display === 'block') {
+                        display.style.display = 'none';
+                    } else {
+                        display.textContent = \`Difficulty: \${difficulty}\`;
+                        display.style.display = 'block';
+                        setTimeout(() => {
+                            display.style.display = 'none';
+                        }, 3000); // 3秒後に非表示
+                    }
+                }
+            </script>
         `;
         res.send(generatePage(nav, content));
     } catch (err) {
@@ -2712,26 +2903,29 @@ app.get('/admin/users', async (req, res) => {
                 <table class="user-table">
                     <tr><th>ユーザー名</th><th>管理者権限</th><th>操作</th></tr>
                     ${users
-                        .map((u, index) => `
-                            <tr>
-                                <td>${u.username}</td>
-                                <td>${u.isAdmin ? 'はい' : 'いいえ'}</td>
-                                <td>
-                                    <form id="delete-user-form-${index}" action="/admin/delete-user" method="POST" style="display:inline;">
-                                        <input type="hidden" name="index" value="${index}">
-                                        <button type="button" onclick="confirmDeletion('delete-user-form-${index}')">削除</button>
-                                    </form>
-                                    ${
-                                        !u.isAdmin
-                                            ? `<form action="/admin/toggle-admin" method="POST" style="display:inline;">
-                                                <input type="hidden" name="index" value="${index}">
-                                                <button type="submit">管理者にする</button>
-                                            </form>`
-                                            : ''
-                                    }
-                                </td>
-                            </tr>
-                        `)
+                        .map((u, index) => {
+                            const usernameColor = getUsernameColor(u.rating);
+                            return `
+                                <tr>
+                                    <td style="color: ${usernameColor};">${u.username}</td>
+                                    <td>${u.isAdmin ? 'はい' : 'いいえ'}</td>
+                                    <td>
+                                        <form id="delete-user-form-${index}" action="/admin/delete-user" method="POST" style="display:inline;">
+                                            <input type="hidden" name="index" value="${index}">
+                                            <button type="button" onclick="confirmDeletion('delete-user-form-${index}')">削除</button>
+                                        </form>
+                                        ${
+                                            !u.isAdmin
+                                                ? `<form action="/admin/toggle-admin" method="POST" style="display:inline;">
+                                                    <input type="hidden" name="index" value="${index}">
+                                                    <button type="submit">管理者にする</button>
+                                                </form>`
+                                                : ''
+                                        }
+                                    </td>
+                                </tr>
+                            `;
+                        })
                         .join('')}
                 </table>
                 <p><a href="/admin">管理者ダッシュボードに戻る</a></p>
