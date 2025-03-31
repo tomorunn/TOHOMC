@@ -174,85 +174,148 @@ const loadContests = async () => {
 };
 
 // Difficulty, Performance, Rating 計算関数
+// difficultyの計算: (WR+NSR)×(W/S) + SR×(S/C) - PR
 const calculateDifficulty = (contest, problemId, users) => {
+    console.log(`問題 ${problemId} のdifficulty計算を開始します...`);
     const submissions = contest.submissions || [];
-    const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-    const submissionsDuringContest = submissions.filter(sub => new Date(sub.date).getTime() <= endTime);
+    const problemSubmissions = submissions.filter(sub => sub.problemId === problemId);
 
-    // P: コンテストに参加した人数
-    const participants = new Set(submissionsDuringContest.map(sub => sub.user));
+    // P: コンテストに参加した人数（提出したユーザー＋ランキングに載るユーザー）
+    const participants = new Set(submissions.map(sub => sub.user));
     const P = participants.size;
+    console.log(`参加者数 (P): ${P}`);
 
-    // S: 問題に回答した人数
-    const submitters = new Set(submissionsDuringContest.filter(sub => sub.problemId === problemId).map(sub => sub.user));
-    const S = submitters.size;
+    // S: 回答した人数
+    const solvers = new Set(problemSubmissions.map(sub => sub.user));
+    const S = solvers.size;
+    console.log(`回答者数 (S): ${S}`);
 
     // C: CAで終わった人数
-    const caSubmissions = submissionsDuringContest.filter(sub => sub.problemId === problemId && sub.result === 'CA');
-    const caUsers = new Set(caSubmissions.map(sub => sub.user));
+    const caUsers = new Set(
+        problemSubmissions
+            .filter(sub => sub.result === 'CA')
+            .map(sub => sub.user)
+    );
     const C = caUsers.size;
+    console.log(`CAで終わった人数 (C): ${C}`);
 
-    // W: WAで終わった人数
-    const waSubmissions = submissionsDuringContest.filter(sub => sub.problemId === problemId && sub.result === 'WA');
-    const waUsers = new Set(waSubmissions.map(sub => sub.user));
+    // W: WAで終わった人数（CAせずにWAした人数）
+    const waUsers = new Set(
+        problemSubmissions
+            .filter(sub => sub.result === 'WA' && !caUsers.has(sub.user))
+            .map(sub => sub.user)
+    );
     const W = waUsers.size;
+    console.log(`WAで終わった人数 (W): ${W}`);
+
+    // 回答者やCA者がいない場合、難易度をデフォルト値（例：100）とする
+    if (S === 0 || C === 0) {
+        console.log(`SまたはCが0のため、difficultyをデフォルト値100に設定します。`);
+        return 100; // デフォルト値として100を設定
+    }
+
+    // 各ratingの平均を計算
+    const getAverageRating = (userList) => {
+        if (userList.length === 0) {
+            console.log(`ユーザー数が0のため、平均ratingを0に設定します。`);
+            return 0;
+        }
+        const totalRating = userList.reduce((sum, username) => {
+            const user = users.find(u => u.username === username);
+            const userRating = user ? (user.rating || 0) : 0;
+            console.log(`ユーザー ${username} のrating: ${userRating}`);
+            return sum + userRating;
+        }, 0);
+        const average = totalRating / userList.length;
+        console.log(`平均rating: ${average}`);
+        return average;
+    };
 
     // SR: 回答した人のratingの平均
-    const submitterRatings = Array.from(submitters).map(username => {
-        const user = users.find(u => u.username === username);
-        return user ? user.rating : 0;
-    });
-    const SR = submitterRatings.length > 0 ? submitterRatings.reduce((sum, r) => sum + r, 0) / submitterRatings.length : 0;
+    const solverList = Array.from(solvers);
+    const SR = getAverageRating(solverList);
+    console.log(`回答者の平均rating (SR): ${SR}`);
 
     // NSR: 回答しなかった人のratingの平均
-    const nonSubmitters = Array.from(participants).filter(username => !submitters.has(username));
-    const nonSubmitterRatings = nonSubmitters.map(username => {
-        const user = users.find(u => u.username === username);
-        return user ? user.rating : 0;
-    });
-    const NSR = nonSubmitterRatings.length > 0 ? nonSubmitterRatings.reduce((sum, r) => sum + r, 0) / nonSubmitterRatings.length : 0;
+    const nonSolvers = Array.from(participants).filter(username => !solvers.has(username));
+    const NSR = getAverageRating(nonSolvers);
+    console.log(`非回答者の平均rating (NSR): ${NSR}`);
 
     // WR: WAした人のratingの平均
-    const waRatings = Array.from(waUsers).map(username => {
-        const user = users.find(u => u.username === username);
-        return user ? user.rating : 0;
-    });
-    const WR = waRatings.length > 0 ? waRatings.reduce((sum, r) => sum + r, 0) / waRatings.length : 0;
+    const waList = Array.from(waUsers);
+    const WR = getAverageRating(waList);
+    console.log(`WAした人の平均rating (WR): ${WR}`);
 
     // PR: コンテストに参加した人のratingの平均
-    const participantRatings = Array.from(participants).map(username => {
-        const user = users.find(u => u.username === username);
-        return user ? user.rating : 0;
-    });
-    const PR = participantRatings.length > 0 ? participantRatings.reduce((sum, r) => sum + r, 0) / participantRatings.length : 0;
+    const PR = getAverageRating(Array.from(participants));
+    console.log(`参加者の平均rating (PR): ${PR}`);
 
-    // Difficulty 計算: (WR + NSR) * (W/S) + SR * (S/C) - PR
-    let difficulty = 0;
-    if (S > 0 && C > 0) {
-        difficulty = (WR + NSR) * (W / S) + SR * (S / C) - PR;
+    // difficulty計算: (WR+NSR)×(W/S) + SR×(S/C) - PR
+    const term1 = (WR + NSR) * (W / S);
+    const term2 = SR * (S / C);
+    const difficulty = term1 + term2 - PR;
+    console.log(`計算結果: (WR+NSR)×(W/S) = ${term1}, SR×(S/C) = ${term2}, PR = ${PR}, difficulty = ${difficulty}`);
+
+    // 計算結果がNaNや無限大の場合、デフォルト値を返す
+    if (isNaN(difficulty) || !isFinite(difficulty)) {
+        console.log(`difficultyがNaNまたは無限大のため、デフォルト値100に設定します。`);
+        return 100;
     }
-    return Math.floor(difficulty); // 小数点以下切り捨て
+
+    return Math.floor(Math.max(0, difficulty)); // 負の値にならないようにする
 };
 
+// Performanceの計算: 解けた問題のdifficultyの総和 / コンテストにおける順位
 const calculatePerformance = (contest, username, rank, contests) => {
-    const solvedProblems = new Set(
-        (contest.submissions || [])
-            .filter(sub => sub.user === username && sub.result === 'CA')
-            .map(sub => sub.problemId)
+    console.log(`ユーザー ${username} のperformance計算を開始します...`);
+    const submissions = contest.submissions || [];
+    const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+    const userSubmissions = submissions.filter(
+        sub => sub.user === username && sub.result === 'CA' && new Date(sub.date).getTime() <= endTime
     );
+    console.log(`ユーザー ${username} のCA提出数: ${userSubmissions.length}`);
+
+    const solvedProblems = new Set(userSubmissions.map(sub => sub.problemId));
+    console.log(`ユーザー ${username} が解いた問題数: ${solvedProblems.size}`);
+
+    // 解けた問題のdifficultyの総和
     const totalDifficulty = Array.from(solvedProblems).reduce((sum, problemId) => {
         const problem = contest.problems.find(p => p.id === problemId);
-        return sum + (problem ? problem.difficulty : 0);
+        const difficulty = problem && problem.difficulty ? problem.difficulty : 0;
+        console.log(`問題 ${problemId} のdifficulty: ${difficulty}`);
+        return sum + difficulty;
     }, 0);
-    // Performance 計算: 解けた問題のdifficultyの総和 / 順位
-    return rank > 0 ? Math.floor(totalDifficulty / rank) : 0; // 小数点以下切り捨て
+    console.log(`総difficulty: ${totalDifficulty}`);
+
+    // 順位が0の場合を防ぐ
+    if (rank === 0) {
+        console.log(`順位が0のため、performanceを0に設定します。`);
+        return 0;
+    }
+
+    // Performance: 総和 / 順位
+    const performance = totalDifficulty / rank;
+    console.log(`Performance計算: ${totalDifficulty} / ${rank} = ${performance}`);
+
+    // 計算結果がNaNや無限大の場合、デフォルト値を返す
+    if (isNaN(performance) || !isFinite(performance)) {
+        console.log(`performanceがNaNまたは無限大のため、デフォルト値0に設定します。`);
+        return 0;
+    }
+
+    return Math.floor(Math.max(0, performance)); // 負の値にならないようにする
 };
 
+// ratingの更新: 前のrating×(9/10) + Performance×(1/10)
 const updateUserRating = (user, performance) => {
-    // Rating 計算: 前のrating * 9/10 + Performance * 1/10
-    const newRating = Math.floor(user.rating * (9 / 10) + performance * (1 / 10));
-    user.rating = newRating;
-    return newRating;
+    console.log(`ユーザー ${user.username} のrating更新を開始します...`);
+    const previousRating = user.rating || 0;
+    console.log(`前のrating: ${previousRating}, Performance: ${performance}`);
+    const newRating = (previousRating * 9 / 10) + (performance * 1 / 10);
+    console.log(`新しいrating計算: (${previousRating} * 9/10) + (${performance} * 1/10) = ${newRating}`);
+    user.rating = Math.floor(Math.max(0, newRating)); // 負の値にならないようにする
+    console.log(`更新後のrating: ${user.rating}`);
+    return user.rating;
 };
 
 // コンテストの保存
@@ -3028,11 +3091,22 @@ app.post('/admin/toggle-admin', async (req, res) => {
 // サーバー起動
 const PORT = process.env.PORT || 3000;
 // 過去のコンテストを再計算する関数
+// 過去のコンテストを再計算する関数
 const recalculatePastContests = async () => {
     try {
         console.log('過去のコンテストの再計算を開始します...');
         const users = await loadUsers();
         const contests = await loadContests();
+
+        if (!users || users.length === 0) {
+            console.log('ユーザーデータがありません。処理を中止します。');
+            return;
+        }
+
+        if (!contests || contests.length === 0) {
+            console.log('コンテストデータがありません。処理を中止します。');
+            return;
+        }
 
         // ユーザーのratingとcontestHistoryをリセット
         users.forEach(user => {
@@ -3047,19 +3121,48 @@ const recalculatePastContests = async () => {
                 return DateTime.fromISO(a.endTime).toJSDate().getTime() - DateTime.fromISO(b.endTime).toJSDate().getTime();
             });
 
+        if (endedContests.length === 0) {
+            console.log('終了したコンテストがありません。処理を中止します。');
+            return;
+        }
+
         // 各コンテストを順に処理
         for (const contest of endedContests) {
+            console.log(`コンテスト "${contest.title}" の処理を開始します...`);
             const contestId = contests.indexOf(contest);
+
+            // 必須プロパティの存在チェック
+            if (!contest.startTime || !contest.endTime) {
+                console.warn(`コンテスト ${contest.title} にstartTimeまたはendTimeがありません。スキップします。`);
+                continue;
+            }
+            if (!contest.problemCount || !contest.problems || contest.problems.length === 0) {
+                console.warn(`コンテスト ${contest.title} に問題がありません。スキップします。`);
+                continue;
+            }
+
             const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+            const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
 
             // コンテスト期間中の提出のみを対象
             const submissionsDuringContest = (contest.submissions || []).filter(
-                (sub) => new Date(sub.date).getTime() <= endTime,
+                (sub) => {
+                    if (!sub.date) {
+                        console.warn(`提出データにdateがありません: ${JSON.stringify(sub)}`);
+                        return false;
+                    }
+                    return new Date(sub.date).getTime() <= endTime;
+                }
             );
+            console.log(`コンテスト期間中の提出数: ${submissionsDuringContest.length}`);
 
             // 同一ユーザー・同一問題の最新の提出を保持
             const userSubmissionsDuringContestMap = new Map();
             submissionsDuringContest.forEach((sub) => {
+                if (!sub.user || !sub.problemId) {
+                    console.warn(`提出データにuserまたはproblemIdがありません: ${JSON.stringify(sub)}`);
+                    return;
+                }
                 const key = `${contestId}-${sub.user}-${sub.problemId}`;
                 const existingSub = userSubmissionsDuringContestMap.get(key);
                 if (
@@ -3073,23 +3176,32 @@ const recalculatePastContests = async () => {
                 }
             });
             const uniqueSubmissionsDuringContest = Array.from(userSubmissionsDuringContestMap.values());
+            console.log(`ユニークな提出数: ${uniqueSubmissionsDuringContest.length}`);
 
             // 問題IDとスコアの設定
             const problemIds = generateProblemIds(contest.problemCount);
             const problemScores = {};
-            (contest.problems || []).forEach((problem) => {
+            contest.problems.forEach((problem) => {
+                if (!problem.id) {
+                    console.warn(`問題にidがありません: ${JSON.stringify(problem)}`);
+                    return;
+                }
                 problemScores[problem.id] = problem.score || 100;
             });
 
             // 各問題のdifficultyを計算
             contest.problems.forEach(problem => {
-                problem.difficulty = calculateDifficulty(contest, problem.id, users);
+                try {
+                    problem.difficulty = calculateDifficulty(contest, problem.id, users);
+                    console.log(`問題 ${problem.id} のdifficulty: ${problem.difficulty}`);
+                } catch (err) {
+                    console.error(`問題 ${problem.id} のdifficulty計算でエラー:`, err);
+                    problem.difficulty = 100; // エラー時はデフォルト値
+                }
             });
 
             // ユーザーごとの統計を計算
             const userStats = {};
-            const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-
             submissionsDuringContest.forEach((sub) => {
                 const username = sub.user;
                 const problemId = sub.problemId;
@@ -3158,28 +3270,40 @@ const recalculatePastContests = async () => {
                 if (b.score !== a.score) return b.score - a.score;
                 return a.lastCATime - b.lastCATime;
             });
+            console.log(`ランキング: ${JSON.stringify(rankings.map(r => ({ username: r.username, score: r.score })), null, 2)}`);
 
             // Performanceとratingの計算
             const userPerformances = {};
             rankings.forEach((rank, index) => {
                 const rankPosition = index + 1;
-                const performance = calculatePerformance(contest, rank.username, rankPosition, contests);
-                userPerformances[rank.username] = performance;
+                try {
+                    const performance = calculatePerformance(contest, rank.username, rankPosition, contests);
+                    userPerformances[rank.username] = performance;
+                } catch (err) {
+                    console.error(`ユーザー ${rank.username} のperformance計算でエラー:`, err);
+                    userPerformances[rank.username] = 0;
+                }
             });
 
             // ユーザーのratingを更新し、履歴に保存
             for (const [username, performance] of Object.entries(userPerformances)) {
                 const targetUser = users.find(u => u.username === username);
                 if (targetUser) {
-                    const newRating = updateUserRating(targetUser, performance);
-                    targetUser.contestHistory.push({
-                        contestId: contestId,
-                        contestTitle: contest.title,
-                        rank: rankings.findIndex(r => r.username === username) + 1,
-                        performance: performance,
-                        ratingAfterContest: newRating,
-                        endTime: contest.endTime,
-                    });
+                    try {
+                        const newRating = updateUserRating(targetUser, performance);
+                        targetUser.contestHistory.push({
+                            contestId: contestId,
+                            contestTitle: contest.title || `Contest ${contestId}`,
+                            rank: rankings.findIndex(r => r.username === username) + 1,
+                            performance: performance,
+                            ratingAfterContest: newRating,
+                            endTime: contest.endTime,
+                        });
+                    } catch (err) {
+                        console.error(`ユーザー ${username} のrating更新でエラー:`, err);
+                    }
+                } else {
+                    console.warn(`ユーザー ${username} が見つかりません。`);
                 }
             }
 
@@ -3196,6 +3320,7 @@ const recalculatePastContests = async () => {
         console.log('過去のコンテストの再計算が完了しました。');
     } catch (err) {
         console.error('過去のコンテスト再計算エラー:', err);
+        throw err;
     }
 };
 
