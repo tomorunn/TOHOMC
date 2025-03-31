@@ -800,17 +800,29 @@ app.get('/register', async (req, res) => {
 
 app.post('/register', async (req, res) => {
     try {
-        const users = await loadUsers();
         const { username, password } = req.body;
-        if (users.find((u) => u.username === username)) {
-            return res.send('ユーザー名が既に存在します <a href="/register">戻る</a>');
+        if (!username || !password) {
+            return res.status(400).send('ユーザー名とパスワードを入力してください');
         }
-        users.push({ username, password, isAdmin: false });
+
+        const users = await loadUsers();
+        if (users.some(user => user.username === username)) {
+            return res.status(400).send('このユーザー名はすでに使用されています');
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        users.push({
+            username,
+            password: hashedPassword,
+            rating: 100, // 初期ratingを100に設定
+            contestHistory: [],
+        });
+
         await saveUsers(users);
         res.redirect('/login');
     } catch (err) {
-        console.error('新規登録処理エラー:', err);
-        res.status(500).send("サーバーエラーが発生しました");
+        console.error('登録エラー:', err);
+        res.status(500).send('サーバーエラーが発生しました');
     }
 });
 
@@ -3110,7 +3122,7 @@ const recalculatePastContests = async () => {
 
         // ユーザーのratingとcontestHistoryをリセット
         users.forEach(user => {
-            user.rating = 0;
+            user.rating = 100;
             user.contestHistory = [];
         });
 
