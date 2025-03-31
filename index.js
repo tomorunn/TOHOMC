@@ -1244,7 +1244,7 @@ app.get('/contest/:contestId/review', async (req, res) => {
 });
 
 // ルート：提出一覧
-aapp.get('/contest/:contestId/submissions', async (req, res) => {
+app.get('/contest/:contestId/submissions', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
