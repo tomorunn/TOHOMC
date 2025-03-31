@@ -3199,6 +3199,9 @@ const recalculatePastContests = async () => {
     }
 };
 
+// ポート番号を環境変数から取得、デフォルトは3000
+const port = process.env.PORT || 3000;
+
 // サーバー起動時に過去のコンテストを再計算
 app.listen(port, async () => {
     console.log(`サーバーがポート${port}で起動しました`);
