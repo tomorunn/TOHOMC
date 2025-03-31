@@ -174,7 +174,7 @@ const loadContests = async () => {
 };
 
 // Difficulty, Performance, Rating 計算関数
-// difficultyの計算: (WR+NSR)×(W/S) + SR×(S/C) - PR
+// Difficultyの計算: WR * (W/P) + NSR * ((P-S)/P) + SR * (C/P)
 const calculateDifficulty = (contest, problemId, users) => {
     console.log(`問題 ${problemId} のdifficulty計算を開始します...`);
     const submissions = contest.submissions || [];
@@ -208,13 +208,13 @@ const calculateDifficulty = (contest, problemId, users) => {
     const W = waUsers.size;
     console.log(`WAで終わった人数 (W): ${W}`);
 
-    // 回答者やCA者がいない場合、難易度をデフォルト値（例：100）とする
-    if (S === 0 || C === 0) {
-        console.log(`SまたはCが0のため、difficultyをデフォルト値100に設定します。`);
-        return 100; // デフォルト値として100を設定
+    // 参加者がいない場合や、回答者が極端に少ない場合の処理
+    if (P === 0) {
+        console.log(`参加者数が0のため、difficultyをデフォルト値100に設定します。`);
+        return 100;
     }
 
-    // 各ratingの平均を計算
+    // 各ratingの平均を計算するヘルパー関数
     const getAverageRating = (userList) => {
         if (userList.length === 0) {
             console.log(`ユーザー数が0のため、平均ratingを0に設定します。`);
@@ -246,15 +246,12 @@ const calculateDifficulty = (contest, problemId, users) => {
     const WR = getAverageRating(waList);
     console.log(`WAした人の平均rating (WR): ${WR}`);
 
-    // PR: コンテストに参加した人のratingの平均
-    const PR = getAverageRating(Array.from(participants));
-    console.log(`参加者の平均rating (PR): ${PR}`);
-
-    // difficulty計算: (WR+NSR)×(W/S) + SR×(S/C) - PR
-    const term1 = (WR + NSR) * (W / S);
-    const term2 = SR * (S / C);
-    const difficulty = term1 + term2 - PR;
-    console.log(`計算結果: (WR+NSR)×(W/S) = ${term1}, SR×(S/C) = ${term2}, PR = ${PR}, difficulty = ${difficulty}`);
+    // difficulty計算: WR * (W/P) + NSR * ((P-S)/P) + SR * (C/P)
+    const term1 = WR * (W / P);         // 不正解者の寄与
+    const term2 = NSR * ((P - S) / P);  // 非回答者の寄与
+    const term3 = SR * (C / P);         // 正解者の寄与
+    const difficulty = term1 + term2 + term3;
+    console.log(`計算結果: WR * (W/P) = ${term1}, NSR * ((P-S)/P) = ${term2}, SR * (C/P) = ${term3}, difficulty = ${difficulty}`);
 
     // 計算結果がNaNや無限大の場合、デフォルト値を返す
     if (isNaN(difficulty) || !isFinite(difficulty)) {
