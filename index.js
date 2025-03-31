@@ -193,6 +193,7 @@ const loadContests = async () => {
 
 // Difficulty, Performance, Rating 計算関数
 // Difficultyの計算: WR * (W/P) + NSR * ((P-S)/P) + SR * (C/P)
+// Difficultyの計算: WR * (W/P) + NSR * ((P-S)/P) + SR * (C/P)
 const calculateDifficulty = (contest, problemId, users) => {
     console.log(`問題 ${problemId} のdifficulty計算を開始します...`);
     const submissions = contest.submissions || [];
@@ -228,19 +229,19 @@ const calculateDifficulty = (contest, problemId, users) => {
 
     // 参加者がいない場合や、回答者が極端に少ない場合の処理
     if (P === 0) {
-        console.log(`参加者数が0のため、difficultyをデフォルト値100に設定します。`);
-        return 100;
+        console.log(`参加者数が0のため、difficultyをデフォルト値200に設定します。`);
+        return 200; // デフォルト値を200に変更（より現実的な難易度）
     }
 
     // 各ratingの平均を計算するヘルパー関数
     const getAverageRating = (userList) => {
         if (userList.length === 0) {
-            console.log(`ユーザー数が0のため、平均ratingを0に設定します。`);
-            return 0;
+            console.log(`ユーザー数が0のため、平均ratingを100に設定します。`);
+            return 100; // ユーザーがいない場合のデフォルト値を100に設定
         }
         const totalRating = userList.reduce((sum, username) => {
             const user = users.find(u => u.username === username);
-            const userRating = user ? (user.rating || 0) : 0;
+            const userRating = user ? (user.rating || 100) : 100; // ユーザーが見つからない場合も100を返す
             console.log(`ユーザー ${username} のrating: ${userRating}`);
             return sum + userRating;
         }, 0);
@@ -268,19 +269,22 @@ const calculateDifficulty = (contest, problemId, users) => {
     const term1 = WR * (W / P);         // 不正解者の寄与
     const term2 = NSR * ((P - S) / P);  // 非回答者の寄与
     const term3 = SR * (C / P);         // 正解者の寄与
-    const difficulty = term1 + term2 + term3;
+    let difficulty = term1 + term2 + term3;
     console.log(`計算結果: WR * (W/P) = ${term1}, NSR * ((P-S)/P) = ${term2}, SR * (C/P) = ${term3}, difficulty = ${difficulty}`);
 
     // 計算結果がNaNや無限大の場合、デフォルト値を返す
     if (isNaN(difficulty) || !isFinite(difficulty)) {
-        console.log(`difficultyがNaNまたは無限大のため、デフォルト値100に設定します。`);
-        return 100;
+        console.log(`difficultyがNaNまたは無限大のため、デフォルト値200に設定します。`);
+        return 200; // デフォルト値を200に変更
     }
 
-    return Math.floor(Math.max(0, difficulty)); // 負の値にならないようにする
+    // 難易度をスケーリング（よりダイナミックな値にする）
+    difficulty = difficulty * 2; // 難易度を2倍にして差を大きくする
+    return Math.floor(Math.max(100, Math.min(3000, difficulty))); // 100～3000の範囲に制限
 };
 
 // Performanceの計算: 解けた問題のdifficultyの総和 / コンテストにおける順位
+// Performanceの計算: 解けた問題のdifficultyの総和 / コンテストにおける順位 + ベースポイント
 const calculatePerformance = (contest, username, rank, contests) => {
     console.log(`ユーザー ${username} のperformance計算を開始します...`);
     const submissions = contest.submissions || [];
@@ -296,7 +300,7 @@ const calculatePerformance = (contest, username, rank, contests) => {
     // 解けた問題のdifficultyの総和
     const totalDifficulty = Array.from(solvedProblems).reduce((sum, problemId) => {
         const problem = contest.problems.find(p => p.id === problemId);
-        const difficulty = problem && problem.difficulty ? problem.difficulty : 0;
+        const difficulty = problem && problem.difficulty ? problem.difficulty : 100; // デフォルト難易度を100に設定
         console.log(`問題 ${problemId} のdifficulty: ${difficulty}`);
         return sum + difficulty;
     }, 0);
@@ -304,21 +308,22 @@ const calculatePerformance = (contest, username, rank, contests) => {
 
     // 順位が0の場合を防ぐ
     if (rank === 0) {
-        console.log(`順位が0のため、performanceを0に設定します。`);
-        return 0;
+        console.log(`順位が0のため、performanceをデフォルト値100に設定します。`);
+        return 100; // デフォルト値を100に設定
     }
 
-    // Performance: 総和 / 順位
-    const performance = totalDifficulty / rank;
-    console.log(`Performance計算: ${totalDifficulty} / ${rank} = ${performance}`);
+    // Performance: (総和 / 順位) + ベースポイント
+    const basePerformance = 100; // ベースポイントを追加
+    const performance = (totalDifficulty / rank) + basePerformance;
+    console.log(`Performance計算: (${totalDifficulty} / ${rank}) + ${basePerformance} = ${performance}`);
 
     // 計算結果がNaNや無限大の場合、デフォルト値を返す
     if (isNaN(performance) || !isFinite(performance)) {
-        console.log(`performanceがNaNまたは無限大のため、デフォルト値0に設定します。`);
-        return 0;
+        console.log(`performanceがNaNまたは無限大のため、デフォルト値100に設定します。`);
+        return 100;
     }
 
-    return Math.floor(Math.max(0, performance)); // 負の値にならないようにする
+    return Math.floor(Math.max(100, performance)); // 最低100を保証
 };
 
 // ratingの更新: 前のrating×(9/10) + Performance×(1/10)
@@ -3118,7 +3123,6 @@ app.post('/admin/toggle-admin', async (req, res) => {
 // サーバー起動
 const PORT = process.env.PORT || 3000;
 // 過去のコンテストを再計算する関数
-// 過去のコンテストを再計算する関数
 const recalculatePastContests = async () => {
     try {
         console.log('過去のコンテストの再計算を開始します...');
@@ -3135,13 +3139,11 @@ const recalculatePastContests = async () => {
             return;
         }
 
-        // ユーザーのcontestHistoryをリセット、ratingは維持
+        // ユーザーのcontestHistoryをリセット、ratingを初期化
         users.forEach(user => {
             user.contestHistory = [];
-            if (user.rating === undefined) {
-                user.rating = 100;
-            }
-            console.log(`ユーザー ${user.username} のコンテスト履歴をリセットしました。現在のrating: ${user.rating}`);
+            user.rating = 100; // 初期Ratingを100にリセット
+            console.log(`ユーザー ${user.username} のコンテスト履歴をリセットしました。初期rating: ${user.rating}`);
         });
 
         // コンテストを終了時刻の古い順にソート
@@ -3218,14 +3220,14 @@ const recalculatePastContests = async () => {
                 problemScores[problem.id] = problem.score || 100;
             });
 
-            // difficultyを計算（現在のratingに依存しない）
+            // difficultyを計算
             contest.problems.forEach(problem => {
                 try {
                     problem.difficulty = calculateDifficulty(contest, problem.id, users);
                     console.log(`問題 ${problem.id} のdifficulty: ${problem.difficulty}`);
                 } catch (err) {
                     console.error(`問題 ${problem.id} のdifficulty計算でエラー:`, err);
-                    problem.difficulty = 100;
+                    problem.difficulty = 200; // エラー時はデフォルト値200
                 }
             });
 
