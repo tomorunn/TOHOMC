@@ -108,6 +108,24 @@ connectToMongo().catch((err) => {
     process.exit(1);
 });
 */
+app.post('/admin/set-rating', async (req, res) => {
+    const { username, rating } = req.body;
+    try {
+        const database = await connectToMongo();
+        const collection = database.collection('users');
+        const result = await collection.updateOne(
+            { username },
+            { $set: { rating: parseInt(rating) } }
+        );
+        if (result.matchedCount === 0) {
+            return res.status(404).send('ユーザーが見つかりません');
+        }
+        res.send(`ユーザー ${username} のratingを ${rating} に設定しました`);
+    } catch (err) {
+        console.error('rating設定エラー:', err);
+        res.status(500).send('サーバーエラー');
+    }
+});
 
 // ユーザー情報の読み込み
 // ユーザー情報の読み込み
