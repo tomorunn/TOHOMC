@@ -241,17 +241,27 @@ const calculateDifficulty = (contest, problemId, users) => {
 };
 
 const calculatePerformance = (contest, username, rank, contests) => {
-    const solvedProblems = new Set(
-        (contest.submissions || [])
-            .filter(sub => sub.user === username && sub.result === 'CA')
-            .map(sub => sub.problemId)
+    // ユーザーが解いた問題（CA）のリストを取得
+    const submissions = (contest.submissions || []).filter(
+        sub => sub.user === username && sub.result === 'CA'
     );
-    const totalDifficulty = Array.from(solvedProblems).reduce((sum, problemId) => {
-        const problem = contest.problems.find(p => p.id === problemId);
-        return sum + (problem ? problem.difficulty : 0);
-    }, 0);
-    // Performance 計算: 解けた問題のdifficultyの総和 / 順位
-    return rank > 0 ? Math.floor(totalDifficulty / rank) : 0; // 小数点以下切り捨て
+
+    // 解いた問題の difficulty の総和を計算
+    let totalDifficulty = 0;
+    for (const sub of submissions) {
+        const problem = contest.problems.find(p => p.id === sub.problemId);
+        if (problem && problem.difficulty) {
+            totalDifficulty += problem.difficulty;
+        }
+    }
+
+    // 順位が 0 の場合はパフォーマンスを 0 とする（ゼロ除算防止）
+    if (rank === 0) return 0;
+
+    // パフォーマンス = 解けた問題の difficulty の総和 ÷ 順位（小数点以下切り捨て）
+    const performance = Math.floor(totalDifficulty / rank);
+    console.log(`Performance for ${username} in contest ${contest.title}: totalDifficulty=${totalDifficulty}, rank=${rank}, performance=${performance}`);
+    return performance;
 };
 
 const updateUserRating = (user, performance) => {
@@ -1353,7 +1363,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         const problemScores = {};
         (contest.problems || []).forEach((problem) => {
             problemScores[problem.id] = problem.score || 100;
-            problem.difficulty = calculateDifficulty(contest, problem.id, users);
+            problem.difficulty = calculateDifficulty(contest, problem.id, users); // difficulty を計算
         });
 
         const userStats = {};
@@ -1436,39 +1446,48 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         });
 
         // コンテスト終了時にPerformanceとratingを計算して保存
-        if (!isContestNotEnded(contest) && !contest.userPerformances) {
-            contest.userPerformances = [];
-            for (let i = 0; i < rankings.length; i++) {
-                const rankEntry = rankings[i];
-                const username = rankEntry.username;
-                const rank = i + 1;
-                const performance = calculatePerformance(contest, username, rank, contests);
-                const targetUser = users.find(u => u.username === username);
-                if (targetUser) {
-                    const preRating = targetUser.rating || 1500; // 初期ratingを1500とする
-                    const newRating = updateUserRating(targetUser, performance);
-                    contest.userPerformances.push({
-                        username,
-                        rank,
-                        performance,
-                        rating: newRating,
-                    });
-                    targetUser.contestHistory = targetUser.contestHistory || [];
-                    targetUser.contestHistory.push({
-                        contestId: contestId, // contestIdを明示的に保存
-                        title: contest.title,
-                        rank,
-                        performance,
-                        rating: newRating,
-                        preRating,
-                        endTime: contest.endTime,
-                    });
-                    targetUser.rating = newRating; // ユーザーのratingを更新
-                    console.log(`Saved contest history for ${username}:`, targetUser.contestHistory[targetUser.contestHistory.length - 1]);
+        if (!isContestNotEnded(contest)) {
+            if (!contest.userPerformances || contest.userPerformances.length === 0) {
+                contest.userPerformances = [];
+                for (let i = 0; i < rankings.length; i++) {
+                    const rankEntry = rankings[i];
+                    const username = rankEntry.username;
+                    const rank = i + 1;
+                    const performance = calculatePerformance(contest, username, rank, contests);
+                    const targetUser = users.find(u => u.username === username);
+                    if (targetUser) {
+                        const preRating = targetUser.rating || 1500;
+                        const newRating = updateUserRating(targetUser, performance);
+                        contest.userPerformances.push({
+                            username,
+                            rank,
+                            performance,
+                            rating: newRating,
+                        });
+                        targetUser.contestHistory = targetUser.contestHistory || [];
+                        const existingEntry = targetUser.contestHistory.find(entry => entry.contestId === contestId);
+                        if (!existingEntry) {
+                            targetUser.contestHistory.push({
+                                contestId: contestId,
+                                title: contest.title,
+                                rank,
+                                performance,
+                                rating: newRating,
+                                preRating,
+                                endTime: contest.endTime,
+                            });
+                        } else {
+                            existingEntry.performance = performance;
+                            existingEntry.rating = newRating;
+                            existingEntry.preRating = preRating;
+                        }
+                        targetUser.rating = newRating;
+                        console.log(`Saved contest history for ${username}:`, targetUser.contestHistory);
+                    }
                 }
+                await saveContests(contests);
+                await saveUsers(users);
             }
-            await saveContests(contests);
-            await saveUsers(users);
         }
 
         const nav = generateNav(user);
@@ -1610,9 +1629,8 @@ app.get('/mypage', async (req, res) => {
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const nav = generateNav(user);
-        const usernameColor = getUsernameColor(user.rating || 1500); // デフォルト値を設定
+        const usernameColor = getUsernameColor(user.rating || 1500);
 
-        // 過去のコンテスト履歴を日付順にソート
         const history = (user.contestHistory || []).sort((a, b) => {
             return DateTime.fromISO(b.endTime).toJSDate().getTime() - DateTime.fromISO(a.endTime).toJSDate().getTime();
         });
