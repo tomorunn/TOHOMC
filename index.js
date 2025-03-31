@@ -884,13 +884,21 @@ app.post('/admin/add-contest', async (req, res) => {
 app.post('/admin/delete-contest', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
+        // ログインしていない、または管理者権限がない場合はエラー
+        if (!user) {
+            return res.redirect('/login');
+        }
+        if (!user.isAdmin) {
+            return res.status(403).send('管理者権限がないため、コンテストを削除できません。');
+        }
         const { index } = req.body;
         const contests = await loadContests();
         const idx = parseInt(index);
         if (idx >= 0 && idx < contests.length) {
             contests.splice(idx, 1);
             await saveContests(contests);
+        } else {
+            return res.status(404).send('指定されたコンテストが見つかりません。');
         }
         res.redirect('/admin');
     } catch (err) {
