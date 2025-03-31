@@ -1435,6 +1435,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
             return a.lastCATime - b.lastCATime;
         });
 
+        // コンテスト終了時にPerformanceとratingを計算して保存
         if (!isContestNotEnded(contest) && !contest.userPerformances) {
             contest.userPerformances = [];
             for (let i = 0; i < rankings.length; i++) {
@@ -1444,7 +1445,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                 const performance = calculatePerformance(contest, username, rank, contests);
                 const targetUser = users.find(u => u.username === username);
                 if (targetUser) {
-                    const preRating = targetUser.rating;
+                    const preRating = targetUser.rating || 1500; // 初期ratingを1500とする
                     const newRating = updateUserRating(targetUser, performance);
                     contest.userPerformances.push({
                         username,
@@ -1454,7 +1455,7 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                     });
                     targetUser.contestHistory = targetUser.contestHistory || [];
                     targetUser.contestHistory.push({
-                        contestId,
+                        contestId: contestId, // contestIdを明示的に保存
                         title: contest.title,
                         rank,
                         performance,
@@ -1462,6 +1463,8 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
                         preRating,
                         endTime: contest.endTime,
                     });
+                    targetUser.rating = newRating; // ユーザーのratingを更新
+                    console.log(`Saved contest history for ${username}:`, targetUser.contestHistory[targetUser.contestHistory.length - 1]);
                 }
             }
             await saveContests(contests);
@@ -1607,7 +1610,7 @@ app.get('/mypage', async (req, res) => {
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
         const nav = generateNav(user);
-        const usernameColor = getUsernameColor(user.rating);
+        const usernameColor = getUsernameColor(user.rating || 1500); // デフォルト値を設定
 
         // 過去のコンテスト履歴を日付順にソート
         const history = (user.contestHistory || []).sort((a, b) => {
@@ -1619,7 +1622,7 @@ app.get('/mypage', async (req, res) => {
                 <h2>マイページ</h2>
                 <div class="user-info">
                     <h3 style="color: ${usernameColor};">${user.username}</h3>
-                    <p class="rating-display">現在のRating: <span style="color: ${usernameColor};">${user.rating}</span></p>
+                    <p class="rating-display">現在のRating: <span style="color: ${usernameColor};">${user.rating || '未設定'}</span></p>
                 </div>
                 <h3>過去のコンテスト履歴</h3>
                 <table class="history-table">
@@ -1634,17 +1637,21 @@ app.get('/mypage', async (req, res) => {
                         history.length > 0
                             ? history
                                 .map((entry) => {
+                                    const contest = contests[entry.contestId];
+                                    const title = contest ? contest.title : `コンテストID: ${entry.contestId} (不明)`;
                                     const endTime = DateTime.fromISO(entry.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
-                                    const ratingChange = entry.rating - entry.preRating;
+                                    const rating = entry.rating || 0;
+                                    const preRating = entry.preRating || 0;
+                                    const ratingChange = rating - preRating;
                                     const ratingChangeDisplay = ratingChange >= 0 ? `+${ratingChange}` : ratingChange;
-                                    const ratingColor = getUsernameColor(entry.rating);
+                                    const ratingColor = getUsernameColor(rating);
                                     return `
                                         <tr>
-                                            <td><a href="/contest/${entry.contestId}">${entry.title}</a></td>
+                                            <td><a href="/contest/${entry.contestId}">${title}</a></td>
                                             <td>${endTime}</td>
-                                            <td>${entry.rank}</td>
-                                            <td>${entry.performance}</td>
-                                            <td style="color: ${ratingColor};">${entry.rating} (${ratingChangeDisplay})</td>
+                                            <td>${entry.rank || '-'}</td>
+                                            <td>${entry.performance || '-'}</td>
+                                            <td style="color: ${ratingColor};">${rating} (${ratingChangeDisplay})</td>
                                         </tr>
                                     `;
                                 })
