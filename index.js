@@ -118,7 +118,7 @@ const loadUsers = async () => {
         const users = await collection.find({}).toArray();
         return users.length > 0 ? users.map(user => ({
             ...user,
-            rating: user.rating || 0,
+            rating: user.rating || 100,
             contestHistory: user.contestHistory || [], // コンテスト履歴を初期化
         })) : [
             { username: 'admin', password: 'admin123', isAdmin: true, rating: 0, contestHistory: [] },
@@ -1740,7 +1740,7 @@ app.get('/mypage', async (req, res) => {
             <section class="hero">
                 <h2>マイページ</h2>
                 <div class="rating-display">
-                    <h3>現在のRating: <span class="rating-value">${user.rating || 0}</span></h3>
+                    <h3>現在のRating: <span class="rating-value">${user.rating || 100}</span></h3>
                 </div>
                 <h3>コンテスト履歴</h3>
                 <div class="table-wrapper">
@@ -3120,11 +3120,12 @@ const recalculatePastContests = async () => {
             return;
         }
 
-        // ユーザーのratingとcontestHistoryをリセット
-        users.forEach(user => {
-            user.rating = 100;
-            user.contestHistory = [];
-        });
+// ユーザーのratingとcontestHistoryをリセット（初期ratingを100に設定）
+users.forEach(user => {
+    user.rating = 100; // 初期ratingを100に設定
+    user.contestHistory = [];
+    console.log(`ユーザー ${user.username} の初期ratingを100に設定しました。`);
+});
 
         // コンテストを終了時刻の古い順にソート
         const endedContests = contests
