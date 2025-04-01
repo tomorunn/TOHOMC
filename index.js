@@ -18,7 +18,7 @@ const getUsernameColor = (rating) => {
     if (rating <= 1200) return '#008000'; // 緑色
     if (rating <= 1600) return '#00CED1'; // 水色
     if (rating <= 2000) return '#0000FF'; // 青色
-    if (rating <= 2400) return '#999900'; // 黄色
+    if (rating <= 2400) return '#CCCC00'; // 黄色
     if (rating <= 2800) return '#FFA500'; // 橙色
     return '#FF0000'; // 赤色
 };
