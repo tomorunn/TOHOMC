@@ -762,11 +762,10 @@ app.get('/admin', async (req, res) => {
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
         
-        // コンテストをstartTimeで昇順ソート
         contests.sort((a, b) => {
             const startA = DateTime.fromISO(a.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
             const startB = DateTime.fromISO(b.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-            return startA - startB; // 昇順（古いものから新しいものへ）
+            return startA - startB;
         });
 
         const nav = generateNav(user);
@@ -776,6 +775,7 @@ app.get('/admin', async (req, res) => {
                 <form action="/admin/add-contest" method="GET">
                     <button type="submit">コンテストを追加</button>
                 </form>
+                <p><a href="/admin/recalculate">Performance, Rating, Difficulty を再計算</a></p>
                 <h3>管理可能なコンテスト</h3>
                 <ul>
                     ${
@@ -3035,6 +3035,190 @@ app.post('/admin/toggle-admin', async (req, res) => {
         res.redirect('/admin/users');
     } catch (err) {
         console.error('管理者権限切り替えエラー:', err);
+        res.status(500).send("サーバーエラーが発生しました");
+    }
+});
+
+// ルート：Performance, Rating, Difficulty の再計算
+app.get('/admin/recalculate', async (req, res) => {
+    try {
+        const user = await getUserFromCookie(req);
+        if (!user || !user.isAdmin) return res.redirect('/login');
+
+        const contests = await loadContests();
+        const users = await loadUsers();
+
+        // 1. コンテストをstartTimeで昇順ソート
+        contests.sort((a, b) => {
+            const startA = DateTime.fromISO(a.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+            const startB = DateTime.fromISO(b.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+            return startA - startB; // 昇順（古いものから新しいものへ）
+        });
+
+        // 2. ユーザーのRatingをリセット（初期値に戻す）
+        users.forEach(u => {
+            u.rating = 0; // 初期Ratingを0に設定（必要に応じて調整）
+            u.contestHistory = []; // 履歴をクリア
+        });
+
+        // 3. 各コンテストに対して再計算
+        for (const contest of contests) {
+            const contestId = contests.indexOf(contest);
+            const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+
+            // Difficulty の再計算
+            contest.problems.forEach(problem => {
+                problem.difficulty = calculateDifficulty(contest, problem.id, users);
+            });
+
+            // ランキングの計算（既存ロジックを再利用）
+            const submissionsDuringContest = (contest.submissions || []).filter(
+                (sub) => new Date(sub.date).getTime() <= endTime,
+            );
+
+            const userSubmissionsDuringContestMap = new Map();
+            submissionsDuringContest.forEach((sub) => {
+                const key = `${contestId}-${sub.user}-${sub.problemId}`;
+                const existingSub = userSubmissionsDuringContestMap.get(key);
+                if (
+                    !existingSub ||
+                    (existingSub.result !== 'CA' && sub.result === 'CA') ||
+                    (existingSub.result !== 'CA' &&
+                        sub.result !== 'CA' &&
+                        new Date(sub.date).getTime() > new Date(existingSub.date).getTime())
+                ) {
+                    userSubmissionsDuringContestMap.set(key, sub);
+                }
+            });
+            const uniqueSubmissionsDuringContest = Array.from(userSubmissionsDuringContestMap.values());
+
+            const problemScores = {};
+            contest.problems.forEach((problem) => {
+                problemScores[problem.id] = problem.score || 100;
+            });
+
+            const userStats = {};
+            const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+
+            submissionsDuringContest.sort(
+                (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+            );
+
+            submissionsDuringContest.forEach((sub) => {
+                const username = sub.user;
+                const problemId = sub.problemId;
+                const result = sub.result;
+                const submissionTime = new Date(sub.date).getTime();
+                const timeSinceStart = (submissionTime - startTime) / 1000;
+
+                if (!userStats[username]) {
+                    userStats[username] = {
+                        score: 0,
+                        lastCATime: 0,
+                        problems: {},
+                        totalWABeforeCA: 0,
+                    };
+                }
+
+                if (!userStats[username].problems[problemId]) {
+                    userStats[username].problems[problemId] = {
+                        status: 'none',
+                        time: null,
+                        waCountBeforeCA: 0,
+                        waCount: 0,
+                    };
+                }
+
+                const problemStat = userStats[username].problems[problemId];
+
+                if (result === 'CA' && problemStat.status !== 'CA') {
+                    problemStat.status = 'CA';
+                    problemStat.time = timeSinceStart;
+                    userStats[username].score += problemScores[problemId] || 0;
+                    userStats[username].lastCATime = Math.max(
+                        userStats[username].lastCATime,
+                        timeSinceStart,
+                    );
+                } else if (result === 'WA' && problemStat.status !== 'CA') {
+                    problemStat.waCountBeforeCA += 1;
+                    problemStat.waCount += 1;
+                    problemStat.status = 'WA';
+                } else if (result === 'WA') {
+                    problemStat.waCount += 1;
+                }
+            });
+
+            Object.keys(userStats).forEach((username) => {
+                userStats[username].totalWABeforeCA = Object.values(
+                    userStats[username].problems,
+                ).reduce((sum, p) => sum + (p.status === 'CA' ? p.waCountBeforeCA : 0), 0);
+            });
+
+            const rankings = Object.keys(userStats).map((username) => {
+                const stats = userStats[username];
+                const penaltyTime = stats.totalWABeforeCA * 300;
+                return {
+                    username,
+                    score: stats.score,
+                    lastCATime: stats.lastCATime + penaltyTime,
+                    problems: stats.problems,
+                    totalWABeforeCA: stats.totalWABeforeCA,
+                };
+            });
+
+            rankings.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return a.lastCATime - b.lastCATime;
+            });
+
+            // Performance と Rating の再計算
+            contest.userPerformances = [];
+            for (let i = 0; i < rankings.length; i++) {
+                const rankEntry = rankings[i];
+                const username = rankEntry.username;
+                const rank = i + 1;
+                const performance = calculatePerformance(contest, username, rank, contests);
+                const targetUser = users.find(u => u.username === username);
+                if (targetUser) {
+                    const preRating = targetUser.rating || 0;
+                    const newRating = updateUserRating(targetUser, performance);
+                    contest.userPerformances.push({
+                        username,
+                        rank,
+                        performance,
+                        rating: newRating,
+                    });
+                    targetUser.contestHistory = targetUser.contestHistory || [];
+                    const existingEntry = targetUser.contestHistory.find(entry => entry.contestId === contestId);
+                    if (!existingEntry) {
+                        targetUser.contestHistory.push({
+                            contestId: contestId,
+                            title: contest.title,
+                            rank,
+                            performance,
+                            rating: newRating,
+                            preRating,
+                            endTime: contest.endTime,
+                        });
+                    } else {
+                        existingEntry.rank = rank;
+                        existingEntry.performance = performance;
+                        existingEntry.rating = newRating;
+                        existingEntry.preRating = preRating;
+                    }
+                    targetUser.rating = newRating;
+                    console.log(`Recalculated for ${username} in contest ${contest.title}: Performance=${performance}, Rating=${newRating}`);
+                }
+            }
+        }
+
+        // 4. データベースに保存
+        await saveContests(contests);
+        await saveUsers(users);
+
+        res.send('Performance, Rating, Difficulty の再計算が完了しました。<a href="/admin">管理者ダッシュボードに戻る</a>');
+    } catch (err) {
+        console.error('再計算エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
