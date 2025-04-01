@@ -762,6 +762,14 @@ app.get('/admin', async (req, res) => {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
+        
+        // コンテストをstartTimeで昇順ソート
+        contests.sort((a, b) => {
+            const startA = DateTime.fromISO(a.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+            const startB = DateTime.fromISO(b.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+            return startA - startB; // 昇順（古いものから新しいものへ）
+        });
+
         const nav = generateNav(user);
         const content = `
             <section class="hero">
@@ -783,10 +791,12 @@ app.get('/admin', async (req, res) => {
                                         ${contest.title} (開始: ${start}, 終了: ${end}, 状態: ${status})
                                         ${
                                             user.isAdmin // サイト管理者のみに削除ボタンを表示
-                                            ? `<form id="delete-form-${index}" action="/admin/delete-contest" method="POST" style="display:inline;">
-                                                <input type="hidden" name="index" value="${index}">
-                                                <button type="button" onclick="confirmDeletion('delete-form-${index}')">削除</button>
-                                            </form>`
+                                            ? `
+                                                <form id="delete-form-${index}" action="/admin/delete-contest" method="POST" style="display:inline;">
+                                                    <input type="hidden" name="index" value="${index}">
+                                                    <button type="button" onclick="confirmDeletion('delete-form-${index}')">削除</button>
+                                                </form>
+                                            `
                                             : ''
                                         }
                                         <a href="/admin/contest-details/${index}">詳細</a>
@@ -799,7 +809,10 @@ app.get('/admin', async (req, res) => {
                 </ul>
                 ${
                     user.isAdmin
-                        ? `<h3>ユーザー管理</h3><a href="/admin/users">ユーザー管理ページへ</a>`
+                        ? `
+                            <h3>ユーザー管理</h3>
+                            <a href="/admin/users">ユーザー管理ページへ</a>
+                        `
                         : ''
                 }
             </section>
@@ -1017,6 +1030,7 @@ app.post('/admin/delete-contest', async (req, res) => {
 });
 
 // ルート：コンテスト一覧
+// ルート：コンテスト一覧
 app.get('/contests', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -1025,12 +1039,23 @@ app.get('/contests', async (req, res) => {
 
         const activeContestsWithIndex = contests
             .map((contest, index) => ({ contest, originalIndex: index }))
-            .filter(({ contest }) => isContestNotEnded(contest));
+            .filter(({ contest }) => isContestNotEnded(contest))
+            .sort((a, b) => {
+                // startTime を DateTime オブジェクトに変換して比較
+                const startA = DateTime.fromISO(a.contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+                const startB = DateTime.fromISO(b.contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+                return startA - startB; // 昇順（古いものから新しいものへ）
+            });
 
         const content = `
             <section class="hero">
                 <h2>コンテスト一覧</h2>
                 <p>参加可能なコンテストをチェック！</p>
+                ${
+                    user
+                        ? '<p><a href="/contests/add-contest">新しいコンテストを作成</a></p>'
+                        : ''
+                }
                 <ul class="contest-list">
                     ${
                         activeContestsWithIndex.length > 0
@@ -2106,6 +2131,7 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
 });
 
 // ルート：過去の問題
+// ルート：過去の問題
 app.get('/problems', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -2113,7 +2139,15 @@ app.get('/problems', async (req, res) => {
         const contests = await loadContests();
         const users = await loadUsers(); // ユーザーデータを取得してdifficulty計算に使用
         const nav = generateNav(user);
-        const endedContests = contests.filter((contest) => !isContestNotEnded(contest));
+        
+        // 終了したコンテストをフィルタリングし、startTimeで昇順ソート
+        const endedContests = contests
+            .filter((contest) => !isContestNotEnded(contest))
+            .sort((a, b) => {
+                const startA = DateTime.fromISO(a.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+                const startB = DateTime.fromISO(b.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+                return startA - startB; // 昇順（古いものから新しいものへ）
+            });
 
         // すべてのコンテストの中で最大の問題数を求める
         const maxProblemCount = Math.max(...endedContests.map(contest => contest.problemCount || 0), 0);
@@ -2175,9 +2209,7 @@ app.get('/problems', async (req, res) => {
                                                             return `<td>-</td>`;
                                                         }
                                                         const userSubmissions = (contest.submissions || []).filter(
-                                                            (sub) =>
-                                                                sub.user === user.username &&
-                                                                sub.problemId === problemId,
+                                                            (sub) => sub.user === user.username && sub.problemId === problemId
                                                         );
                                                         const isCA = userSubmissions.some((sub) => sub.result === 'CA');
                                                         const contestId = contests.indexOf(contest);
@@ -2196,7 +2228,7 @@ app.get('/problems', async (req, res) => {
                                             </tr>
                                         `;
                                     })
-                                    .join('') || '<tr><td colspan="' + (maxProblemCount + 1) + '">終了したコンテストはありません。</td></tr>'
+                                    .join('') || `<tr><td colspan="${maxProblemCount + 1}">終了したコンテストはありません。</td></tr>`
                             }
                         </tbody>
                     </table>
@@ -2273,14 +2305,14 @@ app.get('/problems', async (req, res) => {
             </style>
             <script>
                 function showDifficulty(contestId, problemId, difficulty) {
-                    const display = document.getElementById(\`difficulty-\${contestId}-\${problemId}\`);
-                    if (display.style.display === 'block') {
-                        display.style.display = 'none';
+                    const display = document.getElementById("difficulty-" + contestId + "-" + problemId);
+                    if (display.style.display === "block") {
+                        display.style.display = "none";
                     } else {
-                        display.textContent = \`Difficulty: \${difficulty}\`;
-                        display.style.display = 'block';
+                        display.textContent = "Difficulty: " + difficulty;
+                        display.style.display = "block";
                         setTimeout(() => {
-                            display.style.display = 'none';
+                            display.style.display = "none";
                         }, 3000); // 3秒後に非表示
                     }
                 }
