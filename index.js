@@ -756,7 +756,6 @@ app.post('/register', async (req, res) => {
 });
 
 // ルート：管理者ダッシュボード
-// ルート：管理者ダッシュボード
 app.get('/admin', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -781,7 +780,7 @@ app.get('/admin', async (req, res) => {
                 <ul>
                     ${
                         contests
-                            .filter(contest => canManageContest(user, contest)) // 管理者権限のあるコンテストのみ表示
+                            .filter(contest => canManageContest(user, contest))
                             .map((contest, index) => {
                                 const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                 const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
@@ -790,7 +789,7 @@ app.get('/admin', async (req, res) => {
                                     <li>
                                         ${contest.title} (開始: ${start}, 終了: ${end}, 状態: ${status})
                                         ${
-                                            user.isAdmin // サイト管理者のみに削除ボタンを表示
+                                            user.isAdmin
                                             ? `
                                                 <form id="delete-form-${index}" action="/admin/delete-contest" method="POST" style="display:inline;">
                                                     <input type="hidden" name="index" value="${index}">
@@ -913,7 +912,12 @@ app.get('/contests', async (req, res) => {
 
         const activeContestsWithIndex = contests
             .map((contest, index) => ({ contest, originalIndex: index }))
-            .filter(({ contest }) => isContestNotEnded(contest));
+            .filter(({ contest }) => isContestNotEnded(contest))
+            .sort((a, b) => {
+                const startA = DateTime.fromISO(a.contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+                const startB = DateTime.fromISO(b.contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+                return startA - startB; // 昇順（古いものから新しいものへ）
+            });
 
         const content = `
             <section class="hero">
@@ -1656,8 +1660,11 @@ app.get('/mypage', async (req, res) => {
         const nav = generateNav(user);
         const usernameColor = getUsernameColor(user.rating || 1500);
 
+        // コンテスト履歴をendTimeで昇順ソート
         const history = (user.contestHistory || []).sort((a, b) => {
-            return DateTime.fromISO(b.endTime).toJSDate().getTime() - DateTime.fromISO(a.endTime).toJSDate().getTime();
+            const endA = DateTime.fromISO(a.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+            const endB = DateTime.fromISO(b.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
+            return endA - endB; // 昇順（古いものから新しいものへ）
         });
 
         const content = `
@@ -2131,16 +2138,14 @@ app.post('/contest/:contestId/submit/:problemId', async (req, res) => {
 });
 
 // ルート：過去の問題
-// ルート：過去の問題
 app.get('/problems', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         const contests = await loadContests();
-        const users = await loadUsers(); // ユーザーデータを取得してdifficulty計算に使用
+        const users = await loadUsers();
         const nav = generateNav(user);
         
-        // 終了したコンテストをフィルタリングし、startTimeで昇順ソート
         const endedContests = contests
             .filter((contest) => !isContestNotEnded(contest))
             .sort((a, b) => {
@@ -2149,11 +2154,9 @@ app.get('/problems', async (req, res) => {
                 return startA - startB; // 昇順（古いものから新しいものへ）
             });
 
-        // すべてのコンテストの中で最大の問題数を求める
         const maxProblemCount = Math.max(...endedContests.map(contest => contest.problemCount || 0), 0);
         const problemIds = generateProblemIds(maxProblemCount);
 
-        // 各問題のdifficultyを事前に計算
         const difficulties = {};
         for (const contest of endedContests) {
             const contestId = contests.indexOf(contest);
@@ -2313,7 +2316,7 @@ app.get('/problems', async (req, res) => {
                         display.style.display = "block";
                         setTimeout(() => {
                             display.style.display = "none";
-                        }, 3000); // 3秒後に非表示
+                        }, 3000);
                     }
                 }
             </script>
