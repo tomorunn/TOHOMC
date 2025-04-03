@@ -776,6 +776,7 @@ app.get('/admin', async (req, res) => {
                     <button type="submit">コンテストを追加</button>
                 </form>
                 <p><a href="/admin/recalculate">Performance, Rating, Difficulty を再計算</a></p>
+                <p><a href="/admin/setRating" class="button">ユーザーRatingを設定</a><p>
                 <h3>管理可能なコンテスト</h3>
                 <ul>
                     ${
