@@ -776,7 +776,6 @@ app.get('/admin', async (req, res) => {
                     <button type="submit">コンテストを追加</button>
                 </form>
                 <p><a href="/admin/recalculate">Performance, Rating, Difficulty を再計算</a></p>
-                <p><a href="/admin/setRating" class="button">ユーザーRatingを設定</a><p>
                 <h3>管理可能なコンテスト</h3>
                 <ul>
                     ${
@@ -2962,13 +2961,14 @@ app.get('/admin/users', async (req, res) => {
             <section class="hero">
                 <h2>ユーザー管理</h2>
                 <table class="user-table">
-                    <tr><th>ユーザー名</th><th>管理者権限</th><th>操作</th></tr>
+                    <tr><th>ユーザー名</th><th>現在のRating</th><th>管理者権限</th><th>操作</th></tr>
                     ${users
                         .map((u, index) => {
                             const usernameColor = getUsernameColor(u.rating);
                             return `
                                 <tr>
                                     <td style="color: ${usernameColor};">${u.username}</td>
+                                    <td>${u.rating || 0}</td>
                                     <td>${u.isAdmin ? 'はい' : 'いいえ'}</td>
                                     <td>
                                         <form id="delete-user-form-${index}" action="/admin/delete-user" method="POST" style="display:inline;">
@@ -2983,6 +2983,11 @@ app.get('/admin/users', async (req, res) => {
                                                 </form>`
                                                 : ''
                                         }
+                                        <form action="/admin/setRating" method="POST" style="display:inline;">
+                                            <input type="hidden" name="username" value="${u.username}">
+                                            <input type="number" name="newRating" min="0" placeholder="Rating" style="width: 60px;" required>
+                                            <button type="submit">Rating設定</button>
+                                        </form>
                                     </td>
                                 </tr>
                             `;
