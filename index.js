@@ -3212,47 +3212,7 @@ app.get('/admin/recalculate', async (req, res) => {
             }
         }
 
-        // ルート：特定のユーザーのRatingを設定
-app.post('/admin/setRating', async (req, res) => {
-    try {
-        // 管理者認証
-        const user = await getUserFromCookie(req);
-        if (!user || !user.isAdmin) return res.redirect('/login');
 
-        // リクエストボディからユーザー名と新しいRatingを取得
-        const { username, newRating } = req.body;
-        if (!username || newRating === undefined) {
-            return res.status(400).send('ユーザー名と新しいRatingを指定してください');
-        }
-
-        // 新しいRatingが数値であり、妥当な範囲かを確認（例: 0以上）
-        const ratingValue = parseInt(newRating, 10);
-        if (isNaN(ratingValue) || ratingValue < 0) {
-            return res.status(400).send('Ratingは0以上の数値で指定してください');
-        }
-
-        // ユーザー一覧を読み込み
-        const users = await loadUsers();
-
-        // 対象ユーザーを検索
-        const targetUser = users.find(u => u.username === username);
-        if (!targetUser) {
-            return res.status(404).send(`ユーザー ${username} が見つかりません`);
-        }
-
-        // Ratingを更新
-        targetUser.rating = ratingValue;
-        console.log(`ユーザー ${username} のRatingを ${ratingValue} に設定しました`);
-
-        // 更新したユーザー情報を保存
-        await saveUsers(users);
-
-        res.send(`ユーザー ${username} のRatingを ${ratingValue} に設定しました。<a href="/admin">管理者ダッシュボードに戻る</a>`);
-    } catch (err) {
-        console.error('Rating設定エラー:', err);
-        res.status(500).send('サーバーエラーが発生しました');
-    }
-});
 
         // 4. データベースに保存
         await saveContests(contests);
@@ -3264,6 +3224,48 @@ app.post('/admin/setRating', async (req, res) => {
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
+
+        // ルート：特定のユーザーのRatingを設定
+        app.post('/admin/setRating', async (req, res) => {
+            try {
+                // 管理者認証
+                const user = await getUserFromCookie(req);
+                if (!user || !user.isAdmin) return res.redirect('/login');
+        
+                // リクエストボディからユーザー名と新しいRatingを取得
+                const { username, newRating } = req.body;
+                if (!username || newRating === undefined) {
+                    return res.status(400).send('ユーザー名と新しいRatingを指定してください');
+                }
+        
+                // 新しいRatingが数値であり、妥当な範囲かを確認（例: 0以上）
+                const ratingValue = parseInt(newRating, 10);
+                if (isNaN(ratingValue) || ratingValue < 0) {
+                    return res.status(400).send('Ratingは0以上の数値で指定してください');
+                }
+        
+                // ユーザー一覧を読み込み
+                const users = await loadUsers();
+        
+                // 対象ユーザーを検索
+                const targetUser = users.find(u => u.username === username);
+                if (!targetUser) {
+                    return res.status(404).send(`ユーザー ${username} が見つかりません`);
+                }
+        
+                // Ratingを更新
+                targetUser.rating = ratingValue;
+                console.log(`ユーザー ${username} のRatingを ${ratingValue} に設定しました`);
+        
+                // 更新したユーザー情報を保存
+                await saveUsers(users);
+        
+                res.send(`ユーザー ${username} のRatingを ${ratingValue} に設定しました。<a href="/admin">管理者ダッシュボードに戻る</a>`);
+            } catch (err) {
+                console.error('Rating設定エラー:', err);
+                res.status(500).send('サーバーエラーが発生しました');
+            }
+        });
 
 // サーバー起動
 const PORT = process.env.PORT || 3000;
