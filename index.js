@@ -3057,6 +3057,7 @@ app.get('/admin/recalculate', async (req, res) => {
 
         // 2. ユーザーのRatingをリセット（初期値に戻す）
         users.forEach(u => {
+            u.rating = 1; // Ratingを1に初期化
             u.contestHistory = []; // 履歴をクリア
         });
 
