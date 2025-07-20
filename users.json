@@ -1,17 +1,1 @@
-[
-  {
-    "username": "admin",
-    "password": "dragonk1534",
-    "isAdmin": true
-  },
-  {
-    "username": "tomorunn",
-    "password": "dragonk1534",
-    "isAdmin": false
-  },
-  {
-    "username": "test",
-    "password": "dragonk1534",
-    "isAdmin": false
-  }
-]
+
