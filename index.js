@@ -643,9 +643,19 @@ const isContestStartedOrActive = (contest) => {
     return now >= start && now <= end;
 };
 
-// 問題ID生成関数
+// 問題ID生成関数（A, B, ..., Z, AA, AB, ..., AZ, BA, ..., ZZ, AAA, ...）
+// 問題IDがアルファベットで生成されるよう修正
 const generateProblemIds = (count) => {
-    return Array.from({ length: count }, (_, i) => String.fromCharCode(65 + i));
+    const toAlphabet = (num) => {
+        let result = '';
+        while (num >= 0) {
+            result = String.fromCharCode((num % 26) + 65) + result;
+            num = Math.floor(num / 26) - 1;
+        }
+        return result;
+    };
+
+    return Array.from({ length: count }, (_, i) => toAlphabet(i));
 };
 
 // ルート：ホーム
