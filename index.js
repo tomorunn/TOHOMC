@@ -179,89 +179,95 @@ const loadContests = async () => {
     }
 };
 
+
 // Difficulty, Performance, Rating 計算関数
+// Iro ratingに基づいた最尤推定
+//diffを-2000~6000で設定
 const calculateDifficulty = (contest, problemId, users) => {
     const submissions = contest.submissions || [];
     const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
     const submissionsDuringContest = submissions.filter(sub => new Date(sub.date).getTime() <= endTime);
 
-    // P: コンテストに参加した人数
     const participants = new Set(submissionsDuringContest.map(sub => sub.user));
-    const P = participants.size;
 
-    // S: 問題に回答した人数
-    const submitters = new Set(submissionsDuringContest.filter(sub => sub.problemId === problemId).map(sub => sub.user));
-    const S = submitters.size;
+    const result = [];
 
-    // C: CAで終わった人数
-    const caSubmissions = submissionsDuringContest.filter(sub => sub.problemId === problemId && sub.result === 'CA');
-    const caUsers = new Set(caSubmissions.map(sub => sub.user));
-    const C = caUsers.size;
+    console.log(`=== ratingごとの1,0変換（${problemId}）===`);
 
-    // W: WAで終わった人数
-    const waSubmissions = submissionsDuringContest.filter(sub => sub.problemId === problemId && sub.result === 'WA');
-    const waUsers = new Set(waSubmissions.map(sub => sub.user));
-    const W = waUsers.size;
-
-    // SR: 回答した人のratingの平均
-    const submitterRatings = Array.from(submitters).map(username => {
+    for (const username of participants) {
         const user = users.find(u => u.username === username);
-        return user ? user.rating : 0;
-    });
-    const SR = submitterRatings.length > 0 ? submitterRatings.reduce((sum, r) => sum + r, 0) / submitterRatings.length : 0;
+        if (!user) {
+            console.log(`ユーザー: ${username} は users に存在しません`);
+            continue;
+        }
 
-    // NSR: 回答しなかった人のratingの平均
-    const nonSubmitters = Array.from(participants).filter(username => !submitters.has(username));
-    const nonSubmitterRatings = nonSubmitters.map(username => {
-        const user = users.find(u => u.username === username);
-        return user ? user.rating : 0;
-    });
-    const NSR = nonSubmitterRatings.length > 0 ? nonSubmitterRatings.reduce((sum, r) => sum + r, 0) / nonSubmitterRatings.length : 0;
+        const userSubs = submissionsDuringContest.filter(sub => sub.user === username && sub.problemId === problemId);
 
-    // WR: WAした人のratingの平均
-    const waRatings = Array.from(waUsers).map(username => {
-        const user = users.find(u => u.username === username);
-        return user ? user.rating : 0;
-    });
-    const WR = waRatings.length > 0 ? waRatings.reduce((sum, r) => sum + r, 0) / waRatings.length : 0;
+        let outcome = 0; // 初期値は不正解
+        if (userSubs.length > 0) {
+            const hasCA = userSubs.some(sub => sub.result === 'CA');
+            outcome = hasCA ? 1 : 0;
+        }
 
-    // PR: コンテストに参加した人のratingの平均
-    const participantRatings = Array.from(participants).map(username => {
-        const user = users.find(u => u.username === username);
-        return user ? user.rating : 0;
-    });
-    const PR = participantRatings.length > 0 ? participantRatings.reduce((sum, r) => sum + r, 0) / participantRatings.length : 0;
-
-    // Difficulty 計算: (WR + NSR) * (W/S) + SR * (S/C) - PR
-    let difficulty = 0;
-    if (S > 0 && C > 0) {
-        difficulty = (WR + NSR) * (W / S) + SR * (S / C) - PR;
+        result.push({ rating: user.rating, outcome });
+        console.log(`ユーザー: ${username}, rating: ${user.rating}, 結果: ${outcome}`);
     }
-    return Math.floor(difficulty); // 小数点以下切り捨て
+
+    // diff探索
+    const ps = [];
+    for (let diff = -2000; diff <= 6000; diff++) {
+        let p = 1;
+        for (const { rating, outcome } of result) {
+            const p_temp = 1 / (Math.exp((diff - rating) / 400) + 1);
+            p *= outcome ? p_temp : (1 - p_temp);
+        }
+        ps.push({ p, diff });
+    }
+
+    ps.sort((a, b) => b.p - a.p);
+    console.log("=== Difficulty 候補と尤度（上位5件） ===");
+    for (let i = 0; i < Math.min(5, ps.length); i++) {
+        console.log(`diff: ${ps[i].diff}, 尤度: ${ps[i].p.toExponential(5)}`);
+    }
+
+    return ps.length ? ps[0].diff : 0;
 };
 
+
+//Iro ratingに基づいた最尤推定
 const calculatePerformance = (contest, username, rank, contests) => {
-    // ユーザーが解いた問題（CA）のリストを取得
     const submissions = (contest.submissions || []).filter(
         sub => sub.user === username && sub.result === 'CA'
     );
 
-    // 解いた問題の difficulty の総和を計算
-    let totalDifficulty = 0;
-    for (const sub of submissions) {
-        const problem = contest.problems.find(p => p.id === sub.problemId);
-        if (problem && problem.difficulty) {
-            totalDifficulty += problem.difficulty;
+    // 難易度付きの提出済み問題を取得
+    const result = [];
+    console.log(`=== ${username} の difficulty × 成否 ===`);
+    for (const problem of contest.problems) {
+        const solved = submissions.some(sub => sub.problemId === problem.id);
+        if (problem.difficulty !== undefined) {
+            result.push({ difficulty: problem.difficulty, outcome: solved ? 1 : 0 });
+            console.log(`problemId: ${problem.id}, difficulty: ${problem.difficulty}, outcome: ${solved ? 1 : 0}`);
         }
     }
 
-    // 順位が 0 の場合はパフォーマンスを 0 とする（ゼロ除算防止）
-    if (rank === 0) return 0;
+    // 疑似コードに従って、最尤 performance を求める
+    const ps = [];
+    for (let perf = -2000; perf <= 6000; perf++) {
+        let p = 1;
+        for (const { difficulty, outcome } of result) {
+            const temp_p = 1 / (Math.exp((perf - difficulty) / 400) + 1);
+            p *= outcome ? temp_p : (1 - temp_p);
+        }
+        ps.push({ p, perf });
+    }
 
-    // パフォーマンス = 解けた問題の difficulty の総和 ÷ 順位（小数点以下切り捨て）
-    const performance = Math.floor(totalDifficulty / rank);
-    console.log(`Performance for ${username} in contest ${contest.title}: totalDifficulty=${totalDifficulty}, rank=${rank}, performance=${performance}`);
-    return performance;
+    // 最大の尤度を持つ performance を返す
+    ps.sort((a, b) => b.p - a.p);
+    const bestPerf = ps.length ? ps[0].perf : 0;
+
+    console.log(`=== 推定performance for ${username} in contest "${contest.title}" → ${bestPerf} ===`);
+    return bestPerf;
 };
 
 const updateUserRating = (user, performance) => {
