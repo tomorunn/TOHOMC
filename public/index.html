@@ -79,7 +79,7 @@
         // トップソルバー取得
 async function fetchTopSolvers() {
     try {
-        const response = await fetch('/contest/users');
+        const response = await fetch('/users');
         if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status} ${response.statusText}`);
         }
