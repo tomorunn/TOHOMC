@@ -3287,6 +3287,17 @@ app.get('/admin/recalculate', async (req, res) => {
             }
         });
 
+// /contest/users エンドポイント
+app.get('/contest/users', async (req, res) => {
+    try {
+        const users = await loadUsers();
+        res.status(200).json(users); // ユーザー情報をJSONで返す
+    } catch (err) {
+        console.error('エンドポイントエラー:', err);
+        res.status(500).json({ error: 'ユーザー情報の取得に失敗しました' });
+    }
+});
+
 // サーバー起動
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
