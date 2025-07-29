@@ -76,7 +76,8 @@
             document.querySelector('.nav-menu').classList.toggle('active');
         });
 
-        // トップソルバー取得async function fetchTopSolvers() {
+        // トップソルバー取得
+        async function fetchTopSolvers() {
     const tableBody = document.getElementById('top-solvers-body');
     tableBody.innerHTML = '<tr><td colspan="3">読み込み中...</td></tr>';
     try {
