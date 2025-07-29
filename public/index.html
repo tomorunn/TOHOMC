@@ -77,26 +77,20 @@
         });
 
         // トップソルバー取得
-        async function fetchTopSolvers() {
-    const tableBody = document.getElementById('top-solvers-body');
-    tableBody.innerHTML = '<tr><td colspan="3">読み込み中...</td></tr>';
+async function fetchTopSolvers() {
     try {
-        // モックデータでテスト
-        const users = [
-            { username: 'admin', password: 'admin123', isAdmin: true, rating: 0, contestHistory: [] },
-            { username: 'user', password: 'pass123', isAdmin: false, rating: 0, contestHistory: [] },
-        ];
-        // const response = await fetch('/contest/users');
-        // if (!response.ok) {
-        //     throw new Error(`HTTPエラー！ステータス: ${response.status} ${response.statusText}`);
-        // }
-        // const users = await response.json();
-        console.log('取得したユーザー:', users);
+        const response = await fetch('/contest/users');
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status} ${response.statusText}`);
+        }
+        const users = await response.json();
+        console.log('Fetched users:', users); // デバッグ用
         const nonAdminUsers = users.filter(user => !user.isAdmin);
         nonAdminUsers.sort((a, b) => {
             if (b.rating !== a.rating) return b.rating - a.rating;
             return a.username.localeCompare(b.username);
         });
+        const tableBody = document.getElementById('top-solvers-body');
         tableBody.innerHTML = '';
         if (nonAdminUsers.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="3">ユーザーデータがありません。</td></tr>';
@@ -104,7 +98,7 @@
         }
         nonAdminUsers.forEach((user, index) => {
             const row = document.createElement('tr');
-            const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/<>/g, '&lt;').replace(/>/g, '&gt;');
             row.innerHTML = `
                 <td>${index + 1}</td>
                 <td>${escapedUsername}</td>
@@ -113,7 +107,8 @@
             tableBody.appendChild(row);
         });
     } catch (error) {
-        console.error('トップソルバー取得エラー:', error.message);
+        console.error('Error fetching top solvers:', error.message, error.stack);
+        const tableBody = document.getElementById('top-solvers-body');
         tableBody.innerHTML = '<tr><td colspan="3">データの取得に失敗しました。詳細: ' + error.message + '</td></tr>';
     }
 }
