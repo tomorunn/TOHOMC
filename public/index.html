@@ -23,20 +23,20 @@
     </nav>
 
     <main>
-        <section class="hero" style="text-align: center;">
+        <section class="hero">
             <h2>TOHO Math Contestへようこそ！</h2>
             <p>TOHO Math Contestは、Online Math Contestのパロディサイトです。</p>
-            <button onclick="window.location.href='/contests'" style="background-color: #2980b9; color: #fff; padding: 1rem 2rem; border: none; border-radius: 6px; cursor: pointer; font-size: 1.25rem;">今すぐ参加</button>
+            <button onclick="window.location.href='/contests'">今すぐ参加</button>
         </section>
 
-        <section class="top-solvers" style="text-align: center; margin: 2rem 0;">
+        <section class="top-solvers">
             <h2>Our Top Solvers</h2>
-            <table id="top-solvers-table" style="margin: 0 auto; border-collapse: collapse; width: 80%;">
+            <table id="top-solvers-table">
                 <thead>
-                    <tr style="background-color: #2980b9; color: #fff;">
-                        <th style="padding: 1rem;">Rank</th>
-                        <th style="padding: 1rem;">Username</th>
-                        <th style="padding: 1rem;">Rating</th>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Username</th>
+                        <th>Rating</th>
                     </tr>
                 </thead>
                 <tbody id="top-solvers-body">
@@ -95,29 +95,29 @@
 
                 // 表のボディを取得
                 const tableBody = document.getElementById('top-solvers-body');
-                tableBody.innerHTML = ''; // 既存の内容をクリア
+                tableBody.innerHTML = '';
 
                 if (nonAdminUsers.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="3" style="padding: 1rem;">ユーザーデータがありません。</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="3">ユーザーデータがありません。</td></tr>';
                     return;
                 }
 
                 // ユーザー情報を表に追加
                 nonAdminUsers.forEach((user, index) => {
                     const row = document.createElement('tr');
-                    // XSS防止のため、ユーザー名をエスケープ
+                    // XSS防止のためユーザー名をエスケープ
                     const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     row.innerHTML = `
-                        <td style="padding: 0.8rem; border: 1px solid #ddd;">${index + 1}</td>
-                        <td style="padding: 0.8rem; border: 1px solid #ddd;">${escapedUsername}</td>
-                        <td style="padding: 0.8rem; border: 1px solid #ddd;">${user.rating}</td>
+                        <td>${index + 1}</td>
+                        <td>${escapedUsername}</td>
+                        <td>${user.rating}</td>
                     `;
                     tableBody.appendChild(row);
                 });
             } catch (error) {
                 console.error('Error fetching top solvers:', error);
                 const tableBody = document.getElementById('top-solvers-body');
-                tableBody.innerHTML = '<tr><td colspan="3" style="padding: 1rem;">データの取得に失敗しました。</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="3">データの取得に失敗しました。</td></tr>';
             }
         }
 
