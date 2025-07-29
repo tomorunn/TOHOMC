@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
+    <semeta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TOHO Math Contest</title>
     <link rel="stylesheet" href="/style.css">
@@ -23,13 +23,13 @@
     </nav>
 
     <main>
-        <section class="hero">
+        <section class="hero" style="text-align: center;">
             <h2>TOHO Math Contestへようこそ！</h2>
             <p>TOHO Math Contestは、Online Math Contestのパロディサイトです。</p>
-            <button onclick="window.location.href='/contests'">今すぐ参加</button>
+            <button onclick="window.location.href='/contests'" style="background-color: #2980b9; color: #fff; padding: 1rem 2rem; border: none; border-radius: 6px; cursor: pointer; font-size: 1.25rem;">今すぐ参加</button>
         </section>
 
-        <section class="top-solvers">
+        <section class="top-solvers" style="margin: 2rem 0;">
             <h2>Our Top Solvers</h2>
             <table id="top-solvers-table">
                 <thead>
@@ -79,8 +79,8 @@
         // トップソルバー取得
         async function fetchTopSolvers() {
             try {
-                // APIからユーザー一覧を取得
-                const response = await fetch('/api/users');
+                // 親ディレクトリのusers.jsonからデータ取得
+                const response = await fetch('../users.json');
                 if (!response.ok) throw new Error('Network response was not ok');
                 const users = await response.json();
 
@@ -106,7 +106,7 @@
                 nonAdminUsers.forEach((user, index) => {
                     const row = document.createElement('tr');
                     // XSS防止のためユーザー名をエスケープ
-                    const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/<>/g, '&lt;').replace(/>/g, '&gt;');
                     row.innerHTML = `
                         <td>${index + 1}</td>
                         <td>${escapedUsername}</td>
@@ -117,6 +117,15 @@
             } catch (error) {
                 console.error('Error fetching top solvers:', error);
                 const tableBody = document.getElementById('top-solvers-body');
+                tableBody.innerHTML = '<tr><td colspan="3">データの取得に失敗しました。</td></tr>';
+            }
+        }
+
+        // ページ読み込み時に実行
+        document.addEventListener('DOMContentLoaded', fetchTopSolvers);
+    </script>
+</body>
+</html>
                 tableBody.innerHTML = '<tr><td colspan="3">データの取得に失敗しました。</td></tr>';
             }
         }
