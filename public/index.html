@@ -77,49 +77,41 @@
         });
 
         // トップソルバー取得
-        async function fetchTopSolvers() {
-            try {
-                // MongoDB対応のAPIエンドポイントからデータ取得
-                const response = await fetch('/contest/users');
-                if (!response.ok) throw new Error('Network response was not ok');
-                const users = await response.json();
-
-                // isAdmin: falseのユーザーのみフィルタリング
-                const nonAdminUsers = users.filter(user => !user.isAdmin);
-
-                // レーティング降順、同一レーティングならユーザー名でアルファベット順
-                nonAdminUsers.sort((a, b) => {
-                    if (b.rating !== a.rating) return b.rating - a.rating;
-                    return a.username.localeCompare(b.username);
-                });
-
-                // 表のボディを取得
-                const tableBody = document.getElementById('top-solvers-body');
-                tableBody.innerHTML = '';
-
-                if (nonAdminUsers.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="3">ユーザーデータがありません。</td></tr>';
-                    return;
-                }
-
-                // ユーザー情報を表に追加
-                nonAdminUsers.forEach((user, index) => {
-                    const row = document.createElement('tr');
-                    // XSS防止のためユーザー名をエスケープ
-                    const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/<>/g, '&lt;').replace(/>/g, '&gt;');
-                    row.innerHTML = `
-                        <td>${index + 1}</td>
-                        <td>${escapedUsername}</td>
-                        <td>${user.rating}</td>
-                    `;
-                    tableBody.appendChild(row);
-                });
-            } catch (error) {
-                console.error('Error fetching top solvers:', error);
-                const tableBody = document.getElementById('top-solvers-body');
-                tableBody.innerHTML = '<tr><td colspan="3">データの取得に失敗しました。</td></tr>';
-            }
+async function fetchTopSolvers() {
+    try {
+        const response = await fetch('/contest/users');
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status} ${response.statusText}`);
         }
+        const users = await response.json();
+        console.log('Fetched users:', users); // デバッグ用
+        const nonAdminUsers = users.filter(user => !user.isAdmin);
+        nonAdminUsers.sort((a, b) => {
+            if (b.rating !== a.rating) return b.rating - a.rating;
+            return a.username.localeCompare(b.username);
+        });
+        const tableBody = document.getElementById('top-solvers-body');
+        tableBody.innerHTML = '';
+        if (nonAdminUsers.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="3">ユーザーデータがありません。</td></tr>';
+            return;
+        }
+        nonAdminUsers.forEach((user, index) => {
+            const row = document.createElement('tr');
+            const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/<>/g, '&lt;').replace(/>/g, '&gt;');
+            row.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${escapedUsername}</td>
+                <td>${user.rating}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+    } catch (error) {
+        console.error('Error fetching top solvers:', error.message, error.stack);
+        const tableBody = document.getElementById('top-solvers-body');
+        tableBody.innerHTML = '<tr><td colspan="3">データの取得に失敗しました。詳細: ' + error.message + '</td></tr>';
+    }
+}
 
         // ページ読み込み時に実行
         document.addEventListener('DOMContentLoaded', fetchTopSolvers);
