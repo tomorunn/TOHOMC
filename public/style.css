@@ -96,27 +96,27 @@ nav {
 /* モバイル対応 */
 @media (max-width: 768px) {
     .nav-toggle {
-        display: block; /* モバイルで表示 */
+        display: block;
     }
 
     .nav-menu {
-        display: none; /* モバイルではデフォルト非表示 */
+        display: none;
         flex-direction: column;
-        position: fixed; /* ビューポート全体に依存 */
-        top: calc(3rem + 1.5rem); /* ナビゲーションの高さ（約3rem） + padding分 */
-        left: 0; /* 左端から開始 */
-        right: 0; /* 右端まで */
-        width: 100vw; /* ビューポートの100% */
+        position: fixed;
+        top: calc(3rem + 1.5rem);
+        left: 0;
+        right: 0;
+        width: 100vw;
         background-color: #2c3e50;
         padding: 1rem;
         box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
         z-index: 1000;
-        box-sizing: border-box; /* paddingを含めた幅計算 */
-        overflow-x: hidden; /* 横スクロールを防ぐ */
+        box-sizing: border-box;
+        overflow-x: hidden;
     }
 
     .nav-menu.active {
-        display: flex; /* トグルで表示 */
+        display: flex;
     }
 
     .nav-menu li {
@@ -125,20 +125,20 @@ nav {
 
     .nav-menu li a {
         font-size: 1.25rem;
-        white-space: nowrap; /* テキストが見切れないように折り返しを防ぐ */
-        overflow: hidden; /* 見切れ防止 */
-        text-overflow: ellipsis; /* 長いテキストは省略記号で表示 */
-        padding: 0 1rem; /* 左右に余白を追加して文字を自然に配置 */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 0 1rem;
     }
 }
 
 @media (min-width: 769px) {
     .nav-toggle {
-        display: none !important; /* PCでは確実に非表示 */
+        display: none !important;
     }
 
     .nav-menu {
-        display: flex !important; /* PCでは常に表示 */
+        display: flex !important;
     }
 }
 
@@ -154,10 +154,46 @@ main {
     padding: 3rem;
     border-radius: 10px;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
 }
 
 .hero h2 {
     margin-top: 0;
+}
+
+.hero button {
+    background-color: #2980b9;
+    color: #fff;
+    padding: 1rem 2rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    font-size: 1.25rem;
+}
+
+.hero button:hover {
+    background-color: #1a5276;
+}
+
+/* トップソルバーのセクション */
+.top-solvers {
+    background-color: #fff;
+    padding: 3rem;
+    border-radius: 10px;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+    margin-top: 2rem;
+    text-align: center;
+}
+
+.top-solvers h2 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+}
+
+.top-solvers table {
+    max-width: 600px;
+    margin: 0 auto;
 }
 
 /* タブ */
@@ -211,6 +247,19 @@ tr:nth-child(even) {
 
 tr:hover {
     background-color: #ecf0f1;
+}
+
+/* レスポンシブデザイン（テーブル） */
+@media (max-width: 600px) {
+    .top-solvers table {
+        width: 100%;
+        font-size: 0.9rem;
+    }
+
+    .top-solvers th,
+    .top-solvers td {
+        padding: 0.5rem;
+    }
 }
 
 /* フォーム */
