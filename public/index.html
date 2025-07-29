@@ -80,7 +80,7 @@
         async function fetchTopSolvers() {
             try {
                 // MongoDB対応のAPIエンドポイントからデータ取得
-                const response = await fetch('/contest/users');
+                const response = await fetch('/contest.users');
                 if (!response.ok) throw new Error('Network response was not ok');
                 const users = await response.json();
 
