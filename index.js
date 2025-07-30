@@ -4,15 +4,14 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const { MongoClient } = require('mongodb');
 const fileUpload = require('express-fileupload');
-const fs = require('fs').promises;
+const fs = require('fs').promises; // ファイルシステムモジュール
 const cloudinary = require('cloudinary').v2;
 
 const app = express();
-const port = 3000;
+
 
 require('dotenv').config();
 
-// ユーザー名のカラー設定
 const getUsernameColor = (rating) => {
     if (rating <= 400) return '#808080'; // 灰色
     if (rating <= 800) return '#8B4513'; // 茶色
@@ -24,18 +23,19 @@ const getUsernameColor = (rating) => {
     return '#FF0000'; // 赤色
 };
 
-// Cloudinaryの設定
+// Cloudinaryの設定をコードの先頭に追加（app.listenの前あたりに記述）
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// ミドルウェアの設定
+
+// ミドルウェアの設定（順序が重要）
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public'))); // publicフォルダを静的ファイルとして提供
+app.use(express.static(path.join(__dirname, 'public'))); // ファビコン対応
 app.use(fileUpload({
     useTempFiles: true,
     tempFileDir: '/tmp/',
@@ -47,6 +47,7 @@ app.use(fileUpload({
 const uploadDir = path.join(__dirname, 'public', 'uploads');
 fs.mkdir(uploadDir, { recursive: true }).catch(err => console.error('アップロードディレクトリ作成エラー:', err));
 
+// MongoDB 接続設定
 // MongoDB 接続設定
 const uri = process.env.MONGO_URI;
 if (!uri) {
@@ -111,57 +112,13 @@ app.use(async (req, res, next) => {
     }
 });
 
-// ユーザー情報取得エンドポイント
-app.get('/users', async (req, res) => {
-    try {
-        const database = await connectToMongo();
-        const collection = database.collection('users');
-        const users = await collection.find({}).project({ password: 0 }).toArray(); // passwordを除外
-        // ユーザー名にカラー情報を追加
-        const usersWithColor = users.map(user => ({
-            ...user,
-            color: getUsernameColor(user.rating)
-        }));
-        res.status(200).json(usersWithColor);
-    } catch (err) {
-        console.error('ユーザー取得エラー:', err);
-        res.status(500).json({ error: 'データの取得に失敗しました', details: err.message });
-    }
+// サーバー起動時に接続を試みる（削除可能）
+/*
+connectToMongo().catch((err) => {
+    console.error('MongoDB初期接続エラー:', err);
+    process.exit(1);
 });
-
-// ユーザー情報の読み込み（初期化用、必要に応じて使用）
-const loadUsers = async () => {
-    try {
-        const database = await connectToMongo();
-        const collection = database.collection('users');
-        const users = await collection.find({}).toArray();
-        return users.length > 0 ? users : [
-            { username: 'admin', password: 'admin123', isAdmin: true, rating: 0, contestHistory: [] },
-            { username: 'user', password: 'pass123', isAdmin: false, rating: 0, contestHistory: [] },
-        ];
-    } catch (err) {
-        console.error('ユーザーの読み込みエラー:', err);
-        return [
-            { username: 'admin', password: 'admin123', isAdmin: true, rating: 0, contestHistory: [] },
-            { username: 'user', password: 'pass123', isAdmin: false, rating: 0, contestHistory: [] },
-        ];
-    }
-};
-
-// サーバー起動時にテストデータを挿入（初回のみ、必要に応じてコメントアウト）
-loadUsers().then(async (users) => {
-    try {
-        const database = await connectToMongo();
-        const collection = database.collection('users');
-        await collection.deleteMany({});
-        await collection.insertMany(users);
-        console.log('テストユーザーを挿入しました');
-    } catch (err) {
-        console.error('テストユーザー挿入エラー:', err);
-    }
-}).catch((err) => {
-    console.error('初期ユーザー読み込みエラー:', err);
-});
+*/
 
 // ユーザー情報の読み込み
 const loadUsers = async () => {
