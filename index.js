@@ -120,6 +120,11 @@ connectToMongo().catch((err) => {
 });
 */
 
+// ルートパスでindex.htmlを提供
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // ユーザー情報の読み込み
 const loadUsers = async () => {
     try {
@@ -152,6 +157,7 @@ const saveUsers = async (users) => {
         throw err;
     }
 };
+
 
 // コンテストの読み込み
 const loadContests = async () => {
