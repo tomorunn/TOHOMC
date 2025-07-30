@@ -50,71 +50,83 @@
         <p>© 2025 TOHOMC. All rights reserved.</p>
     </footer>
 
-    <script>
-        window.MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                processEscapes: true,
-                packages: {'[+]': ['noerrors', 'noundefined', 'align', 'flalign']},
-                displayAlign: 'left'
-            },
-            loader: {load: ['[tex]/noerrors', '[tex]/noundefined', '[tex]/align', '[tex]/flalign']},
-            startup: {
-                ready: () => {
-                    MathJax.startup.defaultReady();
-                    MathJax.startup.promise.then(() => {
-                        console.log('MathJax is loaded and initialized');
-                        MathJax.typesetPromise();
-                    });
-                }
+<script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']],
+            displayMath: [['$$', '$$'], ['\\[', '\\]']],
+            processEscapes: true,
+            packages: {'[+]': ['noerrors', 'noundefined', 'align', 'flalign']},
+            displayAlign: 'left'
+        },
+        loader: {load: ['[tex]/noerrors', '[tex]/noundefined', '[tex]/align', '[tex]/flalign']},
+        startup: {
+            ready: () => {
+                MathJax.startup.defaultReady();
+                MathJax.startup.promise.then(() => {
+                    console.log('MathJax is loaded and initialized');
+                    MathJax.typesetPromise();
+                });
             }
-        };
-
-        // ナビゲーショントグル
-        document.querySelector('.nav-toggle').addEventListener('click', () => {
-            document.querySelector('.nav-menu').classList.toggle('active');
-        });
-
-        // トップソルバー取得
-async function fetchTopSolvers() {
-    try {
-        const response = await fetch('/users');
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status} ${response.statusText}`);
         }
-        const users = await response.json();
-        console.log('Fetched users:', users); // デバッグ用
-        const nonAdminUsers = users.filter(user => !user.isAdmin);
-        nonAdminUsers.sort((a, b) => {
-            if (b.rating !== a.rating) return b.rating - a.rating;
-            return a.username.localeCompare(b.username);
-        });
-        const tableBody = document.getElementById('top-solvers-body');
-        tableBody.innerHTML = '';
-        if (nonAdminUsers.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="3">ユーザーデータがありません。</td></tr>';
-            return;
-        }
-        nonAdminUsers.forEach((user, index) => {
-            const row = document.createElement('tr');
-            const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/<>/g, '&lt;').replace(/>/g, '&gt;');
-            row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${escapedUsername}</td>
-                <td>${user.rating}</td>
-            `;
-            tableBody.appendChild(row);
-        });
-    } catch (error) {
-        console.error('Error fetching top solvers:', error.message, error.stack);
-        const tableBody = document.getElementById('top-solvers-body');
-        tableBody.innerHTML = '<tr><td colspan="3">データの取得に失敗しました。詳細: ' + error.message + '</td></tr>';
+    };
+
+    // ナビゲーショントグル
+    document.querySelector('.nav-toggle').addEventListener('click', () => {
+        document.querySelector('.nav-menu').classList.toggle('active');
+    });
+
+    // ユーザー名の色を設定
+    function getUsernameColor(rating) {
+        if (rating <= 400) return '#808080';
+        if (rating <= 800) return '#8B4513';
+        if (rating <= 1200) return '#008000';
+        if (rating <= 1600) return '#00CED1';
+        if (rating <= 2000) return '#0000FF';
+        if (rating <= 2400) return '#CCCC00';
+        if (rating <= 2800) return '#FFA500';
+        return '#FF0000';
     }
-}
 
-        // ページ読み込み時に実行
-        document.addEventListener('DOMContentLoaded', fetchTopSolvers);
-    </script>
+    // トップソルバー取得
+    async function fetchTopSolvers() {
+        try {
+            const response = await fetch('/api/users'); // エンドポイントを修正
+            if (!response.ok) {
+                throw new Error(`HTTPエラー: ${response.status} ${response.statusText}`);
+            }
+            const users = await response.json();
+            console.log('取得したユーザー:', users); // デバッグ用
+            const nonAdminUsers = users.filter(user => !user.isAdmin);
+            nonAdminUsers.sort((a, b) => {
+                if (b.rating !== a.rating) return b.rating - a.rating;
+                return a.username.localeCompare(b.username);
+            });
+            const tableBody = document.getElementById('top-solvers-body');
+            tableBody.innerHTML = '';
+            if (nonAdminUsers.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="3">ユーザーデータがありません。</td></tr>';
+                return;
+            }
+            nonAdminUsers.forEach((user, index) => {
+                const row = document.createElement('tr');
+                const escapedUsername = user.username.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td style="color: ${getUsernameColor(user.rating)}">${escapedUsername}</td>
+                    <td>${user.rating}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        } catch (error) {
+            console.error('トップソルバー取得エラー:', error.message, error.stack);
+            const tableBody = document.getElementById('top-solvers-body');
+            tableBody.innerHTML = `<tr><td colspan="3">データの取得に失敗しました: ${error.message}</td></tr>`;
+        }
+    }
+
+    // ページ読み込み時に実行
+    document.addEventListener('DOMContentLoaded', fetchTopSolvers);
+</script>
 </body>
 </html>
