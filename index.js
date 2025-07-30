@@ -1846,7 +1846,7 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
         <div class="problem-display">
             <p>配点: ${problem.score || 100}点</p>
             <p>内容: <span class="math-tex">${displayContent}</span></p>
-            <p>作成者: ${problem.writer || '未設定'}</p>
+            <p>writer: ${problem.writer || '未設定'}</p>
             ${
                 problem.image
                     ? `<p>画像: <img src="${problem.image}" alt="Problem Image" style="max-width: 300px; cursor: pointer;" onclick="showModal('${problem.image.replace(/'/g, "\\'")}')"></p>`
@@ -2231,6 +2231,8 @@ app.get('/problems', async (req, res) => {
                                         const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                         const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                         const contestProblemIds = generateProblemIds(contest.problemCount);
+                                        const writers = contest.writers && contest.writers.length > 0 ? contest.writers.join(', ') : '未設定';
+                                        const testers = contest.testers && contest.testers.length > 0 ? contest.testers.join(', ') : '未設定';
 
                                         return `
                                             <tr>
@@ -2239,6 +2241,8 @@ app.get('/problems', async (req, res) => {
                                                     <p>${contest.description}</p>
                                                     <p>開始: ${start}</p>
                                                     <p>終了: ${end}</p>
+                                                    <p>問題作成者: ${writers}</p>
+                                                    <p>テスター: ${testers}</p>
                                                     <p>
                                                         <a href="/contest/${contests.indexOf(contest)}">問題</a> |
                                                         <a href="/contest/${contests.indexOf(contest)}/submissions">提出一覧</a> |
@@ -2252,16 +2256,18 @@ app.get('/problems', async (req, res) => {
                                                         if (!contestProblemIds.includes(problemId)) {
                                                             return `<td>-</td>`;
                                                         }
-                                                        const problem = contest.problems.find((p) => p.id === problemId);
-                                                        if (!problem) {
-                                                            return `<td>-</td>`;
-                                                        }
+                                                        const problem = contest.problems.find((p) => p.id === problemId) || {
+                                                            id: problemId,
+                                                            writer: '未設定',
+                                                            testers: []
+                                                        };
                                                         const userSubmissions = (contest.submissions || []).filter(
                                                             (sub) => sub.user === user.username && sub.problemId === problemId
                                                         );
                                                         const isCA = userSubmissions.some((sub) => sub.result === 'CA');
                                                         const contestId = contests.indexOf(contest);
                                                         const difficulty = difficulties[contestId][problemId];
+                                                        const problemTesters = problem.testers && problem.testers.length > 0 ? problem.testers.join(', ') : '未設定';
                                                         return `
                                                             <td style="background-color: ${isCA ? '#90ee90' : 'white'}; position: relative;">
                                                                 <span class="difficulty-circle" onclick="showDifficulty(${contestId}, '${problemId}', ${difficulty})">●</span>
@@ -2269,6 +2275,8 @@ app.get('/problems', async (req, res) => {
                                                                 <a href="/contest/${contests.indexOf(contest)}/submit/${problem.id}">
                                                                     ${problem.id}
                                                                 </a>
+                                                                <p>Writer: ${problem.writer || '未設定'}</p>
+                                                                <p>Testers: ${problemTesters}</p>
                                                             </td>
                                                         `;
                                                     })
@@ -2372,7 +2380,6 @@ app.get('/problems', async (req, res) => {
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
-
 // ルート：全問題の解答解説ページ
 app.get('/contest/:contestId/explanations', async (req, res) => {
     try {
@@ -2637,7 +2644,7 @@ app.get('/admin/edit-contest/:contestId', async (req, res) => {
                                 <div>
                                     <label>問題 ${problemId}</label><br>
                                     <input type="number" name="score_${problemId}" placeholder="点数" value="${problem.score || 100}"><br>
-                                    <input type="text" name="writer_${problemId}" placeholder="作成者" value="${problem.writer || ''}"><br>
+                                    <input type="text" name="writer_${problemId}" placeholder="writer" value="${problem.writer || ''}"><br>
                                     <textarea name="content_${problemId}" placeholder="TeX使用可、各行を$$で囲む">${problem.content || ''}</textarea><br>
                                     <label>正解:</label><br>
                                     <input type="text" name="correctAnswer_${problemId}" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
@@ -2772,7 +2779,7 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
             <div class="problem-display">
                 <p>内容: <span class="math-tex">${displayContent}</span></p>
                 <p>点数: ${problem.score}</p>
-                <p>作成者: ${problem.writer || '未設定'}</p>
+                <p>writer: ${problem.writer || '未設定'}</p>
                 <p>正解: ${problem.correctAnswer || '未設定'}</p>
                 ${
                     problem.image 
@@ -2800,8 +2807,8 @@ app.get('/admin/problem/:contestId/:problemId', async (req, res) => {
                 <textarea name="content" placeholder="問題内容">${problem.content || ''}</textarea><br>
                 <label>点数:</label><br>
                 <input type="number" name="score" value="${problem.score || 100}" required><br>
-                <label>作成者:</label><br>
-                <input type="text" name="writer" value="${problem.writer || ''}" placeholder="作成者"><br>
+                <label>writer:</label><br>
+                <input type="text" name="writer" value="${problem.writer || ''}" placeholder="writer"><br>
                 <label>正解:</label><br>
                 <input type="text" name="correctAnswer" value="${problem.correctAnswer || ''}" placeholder="正解を入力"><br>
                 <label>解説 (TeX使用可):</label><br>
