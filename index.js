@@ -2241,8 +2241,8 @@ app.get('/problems', async (req, res) => {
                                                     <p>${contest.description}</p>
                                                     <p>開始: ${start}</p>
                                                     <p>終了: ${end}</p>
-                                                    <p>問題作成者: ${writers}</p>
-                                                    <p>テスター: ${testers}</p>
+                                                    <p>writer: ${writers}</p>
+                                                    <p>tester: ${testers}</p>
                                                     <p>
                                                         <a href="/contest/${contests.indexOf(contest)}">問題</a> |
                                                         <a href="/contest/${contests.indexOf(contest)}/submissions">提出一覧</a> |
@@ -2257,9 +2257,7 @@ app.get('/problems', async (req, res) => {
                                                             return `<td>-</td>`;
                                                         }
                                                         const problem = contest.problems.find((p) => p.id === problemId) || {
-                                                            id: problemId,
-                                                            writer: '未設定',
-                                                            testers: []
+                                                            id: problemId
                                                         };
                                                         const userSubmissions = (contest.submissions || []).filter(
                                                             (sub) => sub.user === user.username && sub.problemId === problemId
@@ -2267,7 +2265,6 @@ app.get('/problems', async (req, res) => {
                                                         const isCA = userSubmissions.some((sub) => sub.result === 'CA');
                                                         const contestId = contests.indexOf(contest);
                                                         const difficulty = difficulties[contestId][problemId];
-                                                        const problemTesters = problem.testers && problem.testers.length > 0 ? problem.testers.join(', ') : '未設定';
                                                         return `
                                                             <td style="background-color: ${isCA ? '#90ee90' : 'white'}; position: relative;">
                                                                 <span class="difficulty-circle" onclick="showDifficulty(${contestId}, '${problemId}', ${difficulty})">●</span>
@@ -2275,8 +2272,6 @@ app.get('/problems', async (req, res) => {
                                                                 <a href="/contest/${contests.indexOf(contest)}/submit/${problem.id}">
                                                                     ${problem.id}
                                                                 </a>
-                                                                <p>Writer: ${problem.writer || '未設定'}</p>
-                                                                <p>Testers: ${problemTesters}</p>
                                                             </td>
                                                         `;
                                                     })
