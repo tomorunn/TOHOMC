@@ -1078,10 +1078,9 @@ app.get('/contests', async (req, res) => {
             .map((contest, index) => ({ contest, originalIndex: index }))
             .filter(({ contest }) => isContestNotEnded(contest))
             .sort((a, b) => {
-                // startTime を DateTime オブジェクトに変換して比較
                 const startA = DateTime.fromISO(a.contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
                 const startB = DateTime.fromISO(b.contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-                return startA - startB; // 昇順（古いものから新しいものへ）
+                return startA - startB;
             });
 
         const content = `
@@ -1101,6 +1100,8 @@ app.get('/contests', async (req, res) => {
                                     const start = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                     const end = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toFormat('M月d日 H:mm');
                                     const status = isContestStartedOrActive(contest) ? '開催中' : '準備中';
+                                    const writers = contest.writers && contest.writers.length > 0 ? contest.writers.join(', ') : '未設定';
+                                    const testers = contest.testers && contest.testers.length > 0 ? contest.testers.join(', ') : '未設定';
                                     return `
                                         <li>
                                             <h3>${contest.title}</h3>
@@ -1108,6 +1109,8 @@ app.get('/contests', async (req, res) => {
                                             <p>開始: ${start}</p>
                                             <p>終了: ${end}</p>
                                             <p>状態: ${status}</p>
+                                            <p>writer: ${writers}</p>
+                                            <p>tester: ${testers}</p>
                                             <button onclick="window.location.href='/contest/${originalIndex}'" ${
                                                 status === '準備中' ? 'disabled' : ''
                                             }>${status === '開催中' ? '参加' : '参加'}</button>
@@ -1149,6 +1152,8 @@ app.get('/contest/:contestId', async (req, res) => {
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
         const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
         const endTimeFormatted = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+        const writers = contest.writers && contest.writers.length > 0 ? contest.writers.join(', ') : '未設定';
+        const testers = contest.testers && contest.testers.length > 0 ? contest.testers.join(', ') : '未設定';
 
         const submissionsDuringContest = (contest.submissions || []).filter(
             (sub) => new Date(sub.date).getTime() <= endTime,
@@ -1193,6 +1198,8 @@ app.get('/contest/:contestId', async (req, res) => {
                 <p>${contest.description}</p>
                 <p>開始: ${startTime}</p>
                 <p>終了: ${endTimeFormatted}</p>
+                <p>writer: ${writers}</p>
+                <p>tester: ${testers}</p>
                 <p>終了までの残り時間: <span id="timer" class="timer">${
                     isContestNotEnded(contest) ? '' : 'Finished'
                 }</span></p>
@@ -1229,13 +1236,16 @@ app.get('/contest/:contestId', async (req, res) => {
                         <th>ID</th>
                         <th>点数</th>
                         <th>正解者数/解答者数</th>
-                        <th>Writer</th> <!-- 新しい列を追加 -->
+                        <th>Writer</th>
+                        <th>Testers</th>
                     </tr>
                     ${problemIds
                         .map((problemId) => {
                             const problem =
                                 contest.problems.find((p) => p.id === problemId) || {
                                     score: 100,
+                                    writer: '未設定',
+                                    testers: [],
                                 };
                             const submissionsForProblemDuringContest =
                                 uniqueSubmissionsDuringContest.filter(
@@ -1254,6 +1264,7 @@ app.get('/contest/:contestId', async (req, res) => {
                                 `${user.username}-${problemId}`,
                             );
                             const isCA = userSubmission && userSubmission.result === 'CA';
+                            const problemTesters = problem.testers && problem.testers.length > 0 ? problem.testers.join(', ') : '未設定';
 
                             return `
                                 <tr style="background-color: ${
@@ -1263,7 +1274,8 @@ app.get('/contest/:contestId', async (req, res) => {
                                     <td>${problem.id}</td>
                                     <td>${problem.score || 100}</td>
                                     <td>${caSubmittersDuringContest} / ${totalSubmittersDuringContest}</td>
-                                    <td>${problem.writer || '未設定'}</td> <!-- Writerを表示 -->
+                                    <td>${problem.writer || '未設定'}</td>
+                                    <td>${problemTesters}</td>
                                 </tr>
                             `;
                         })
