@@ -125,6 +125,18 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+app.get('/api/users', async (req, res) => {
+    try {
+        const database = await connectToMongo();
+        const collection = database.collection('users');
+        const users = await collection.find({}).toArray();
+        res.json(users);
+    } catch (err) {
+        console.error('ユーザー取得エラー:', err);
+        res.status(500).json({ error: 'ユーザー情報の取得に失敗しました' });
+    }
+});
+
 // ユーザー情報の読み込み
 const loadUsers = async () => {
     try {
