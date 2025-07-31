@@ -269,7 +269,7 @@ const calculatePerformance = (contest, username, rank, contests) => {
 
     // 疑似コードに従って、最尤 performance を求める
     const ps = [];
-    for (let perf = 0; perf <= 3199; perf++) {
+    for (let perf = 0; perf <= 3200; perf++) {
         let p = 1;
         for (const { difficulty, outcome } of result) {
             const temp_p = 1 / (Math.exp((difficulty - perf) / 400) + 1);
