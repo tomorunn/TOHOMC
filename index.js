@@ -200,7 +200,7 @@ const loadContests = async () => {
 
 // Difficulty, Performance, Rating 計算関数
 // Iro ratingに基づいた最尤推定
-//diffを-2000~6000で設定
+//diffを-2000~3199で設定
 const calculateDifficulty = (contest, problemId, users) => {
     const submissions = contest.submissions || [];
     const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
@@ -233,7 +233,7 @@ const calculateDifficulty = (contest, problemId, users) => {
 
     // diff探索
     const ps = [];
-    for (let diff = 0; diff <= 3200; diff++) {
+    for (let diff = 0; diff <= 3199; diff++) {
         let p = 1;
         for (const { rating, outcome } of result) {
             const p_temp = 1 / (Math.exp((diff - rating) / 400) + 1);
@@ -269,7 +269,7 @@ const calculatePerformance = (contest, username, rank, contests) => {
 
     // 疑似コードに従って、最尤 performance を求める
     const ps = [];
-    for (let perf = 0; perf <= 3200; perf++) {
+    for (let perf = 0; perf <= 3199; perf++) {
         let p = 1;
         for (const { difficulty, outcome } of result) {
             const temp_p = 1 / (Math.exp((difficulty - perf) / 400) + 1);
@@ -510,6 +510,14 @@ const generatePage = (nav, content, includeFooter = true) => `
         <link rel="stylesheet" href="/style.css">
         <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
         <style>
+            .diff-circle {
+                display: inline-block;
+                height: 13px;
+                width: 13px;
+                border-radius: 50%;
+                border: solid 1px;
+                margin-right: 3px;
+            }
             .math-tex {
                 text-align: left !important;
                 display: block !important;
@@ -2267,7 +2275,7 @@ app.get('/problems', async (req, res) => {
                                                         const difficulty = difficulties[contestId][problemId];
                                                         return `
                                                             <td style="background-color: ${isCA ? '#90ee90' : 'white'}; position: relative;">
-                                                                <span class="difficulty-circle" onclick="showDifficulty(${contestId}, '${problemId}', ${difficulty})">●</span>
+                                                                <div class="diff-circle" style="border-color: ${getUsernameColor(difficulty)}; background: linear-gradient(to top, ${getUsernameColor(difficulty)} 0%, ${getUsernameColor(difficulty)} ${difficulty/4-Math.floor(difficulty/400)*100}%, rgba(0, 0, 0, 0) ${difficulty/4-Math.floor(difficulty/400)*100}%, rgba(0, 0, 0, 0) 100%);" onclick="showDifficulty(${contestId}, '${problemId}', ${difficulty})"></div>
                                                                 <span id="difficulty-${contestId}-${problemId}" class="difficulty-display"></span>
                                                                 <a href="/contest/${contests.indexOf(contest)}/submit/${problem.id}">
                                                                     ${problem.id}
