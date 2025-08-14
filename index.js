@@ -1157,14 +1157,21 @@ app.get('/contest/:contestId', async (req, res) => {
 
         const contest = contests[contestId];
         const problemIds = generateProblemIds(contest.problemCount);
+        const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
-        const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
+        const startTimeFormatted = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
         const endTimeFormatted = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
         const writers = contest.writers && contest.writers.length > 0 ? contest.writers.join(', ') : '未設定';
         const testers = contest.testers && contest.testers.length > 0 ? contest.testers.join(', ') : '未設定';
 
+        // コンテスト開催中の提出かつ運営でないユーザーの提出のみを対象
         const submissionsDuringContest = (contest.submissions || []).filter(
-            (sub) => new Date(sub.date).getTime() <= endTime,
+            (sub) => {
+                const submissionTime = new Date(sub.date).getTime();
+                return submissionTime >= startTime &&
+                       submissionTime <= endTime &&
+                       !canManageContest(sub.user, contest);
+            }
         );
         const userSubmissionsDuringContestMap = new Map();
         submissionsDuringContest.forEach((sub) => {
@@ -1184,6 +1191,7 @@ app.get('/contest/:contestId', async (req, res) => {
             userSubmissionsDuringContestMap.values(),
         );
 
+        // ユーザーごとの提出状況（表示用、運営や非有効期間の提出も含む）
         const userSubmissionsMap = new Map();
         (contest.submissions || []).forEach((sub) => {
             const key = `${sub.user}-${sub.problemId}`;
@@ -1204,7 +1212,7 @@ app.get('/contest/:contestId', async (req, res) => {
             <section class="hero">
                 <h2>${contest.title}</h2>
                 <p>${contest.description}</p>
-                <p>開始: ${startTime}</p>
+                <p>開始: ${startTimeFormatted}</p>
                 <p>終了: ${endTimeFormatted}</p>
                 <p>writer: ${writers}</p>
                 <p>tester: ${testers}</p>
