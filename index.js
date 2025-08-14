@@ -1156,15 +1156,13 @@ app.get('/contest/:contestId', async (req, res) => {
         }
 
         const contest = contests[contestId];
-        if (!hasContestStarted(contest) && !canManageContest(user, contest)) {
-            return res.status(403).send('コンテスト開始前は管理者以外アクセスできません');
-        }
         const problemIds = generateProblemIds(contest.problemCount);
         const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
         const startTimeFormatted = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
         const endTimeFormatted = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
         const writers = contest.writers && contest.writers.length > 0 ? contest.writers.join(', ') : '未設定';
+        const testers = contest.testers && contest.testers.length > 0 ? contest.testers.join(', ') : '未設定';
 
         // コンテスト開催中の提出かつ運営でないユーザーの提出のみを対象
         const submissionsDuringContest = (contest.submissions || []).filter(
@@ -1217,6 +1215,7 @@ app.get('/contest/:contestId', async (req, res) => {
                 <p>開始: ${startTimeFormatted}</p>
                 <p>終了: ${endTimeFormatted}</p>
                 <p>writer: ${writers}</p>
+                <p>tester: ${testers}</p>
                 <p>終了までの残り時間: <span id="timer" class="timer">${
                     isContestNotEnded(contest) ? '' : 'Finished'
                 }</span></p>
@@ -1254,6 +1253,7 @@ app.get('/contest/:contestId', async (req, res) => {
                         <th>点数</th>
                         <th>正解者数/解答者数</th>
                         <th>Writer</th>
+                        <th>Testers</th>
                     </tr>
                     ${problemIds
                         .map((problemId) => {
@@ -1261,6 +1261,7 @@ app.get('/contest/:contestId', async (req, res) => {
                                 contest.problems.find((p) => p.id === problemId) || {
                                     score: 100,
                                     writer: '未設定',
+                                    testers: [],
                                 };
                             const submissionsForProblemDuringContest =
                                 uniqueSubmissionsDuringContest.filter(
@@ -1279,6 +1280,7 @@ app.get('/contest/:contestId', async (req, res) => {
                                 `${user.username}-${problemId}`,
                             );
                             const isCA = userSubmission && userSubmission.result === 'CA';
+                            const problemTesters = problem.testers && problem.testers.length > 0 ? problem.testers.join(', ') : '未設定';
 
                             return `
                                 <tr style="background-color: ${
@@ -1289,6 +1291,7 @@ app.get('/contest/:contestId', async (req, res) => {
                                     <td>${problem.score || 100}</td>
                                     <td>${caSubmittersDuringContest} / ${totalSubmittersDuringContest}</td>
                                     <td>${problem.writer || '未設定'}</td>
+                                    <td>${problemTesters}</td>
                                 </tr>
                             `;
                         })
@@ -1306,7 +1309,7 @@ app.get('/contest/:contestId', async (req, res) => {
         console.error('コンテスト詳細エラー:', err);
         res.status(500).send("サーバーエラーが発生しました");
     }
-});​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
+});
 
 // ルート：コンテスト講評
 app.get('/contest/:contestId/review', async (req, res) => {
