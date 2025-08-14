@@ -1216,6 +1216,8 @@ app.get('/contest/:contestId', async (req, res) => {
                 <p>開始: ${startTimeFormatted}</p>
                 <p>終了: ${endTimeFormatted}</p>
                 <p>writer: ${writers}</p>
+                <p>tester: ${testers}</p>
+                
                 <p>終了までの残り時間: <span id="timer" class="timer">${
                     isContestNotEnded(contest) ? '' : 'Finished'
                 }</span></p>
@@ -1253,7 +1255,6 @@ app.get('/contest/:contestId', async (req, res) => {
                         <th>点数</th>
                         <th>正解者数/解答者数</th>
                         <th>Writer</th>
-                        <th>Testers</th>
                     </tr>
                     ${problemIds
                         .map((problemId) => {
