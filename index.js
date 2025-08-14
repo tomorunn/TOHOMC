@@ -1282,6 +1282,7 @@ app.get('/contest/:contestId', async (req, res) => {
                                 `${user.username}-${problemId}`,
                             );
                             const isCA = userSubmission && userSubmission.result === 'CA';
+                            const problemTesters = problem.testers && problem.testers.length > 0 ? problem.testers.join(', ') : '未設定';
 
                             return `
                                 <tr style="background-color: ${
