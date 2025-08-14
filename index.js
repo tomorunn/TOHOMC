@@ -1164,6 +1164,7 @@ app.get('/contest/:contestId', async (req, res) => {
         const startTimeFormatted = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
         const endTimeFormatted = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toLocaleString(DateTime.DATETIME_FULL);
         const writers = contest.writers && contest.writers.length > 0 ? contest.writers.join(', ') : '未設定';
+        const testers = contest.testers && contest.testers.length > 0 ? contest.testers.join(', ') : '未設定';
 
         // コンテスト開催中の提出かつ運営でないユーザーの提出のみを対象
         const submissionsDuringContest = (contest.submissions || []).filter(
