@@ -2032,9 +2032,29 @@ if (!isContestNotEnded(contest) && problem.explanation) {
     content += `<p><a href="/contest/${contestId}/explanation/${problemId}">解答解説を見る</a></p>`;
 }
 
-if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
+if (!isContestStartedOrActive(contest) && !canManageContest(user, contest)) {
     content += `
-        <p style="color: red;">あなたはこのコンテストの管理者権限を持っているため、開催中に問題に回答することはできません。</p>
+        <p style="color: orange;">このコンテストは未開始または終了しています。解答の提出はできません。</p>
+    `;
+} else if (canManageContest(user, contest)) {
+    content += `
+        <p style="color: orange;">${isContestStartedOrActive(contest) ? 'あなたはこのコンテストの管理者権限を持っているため、開催中の提出はランキングに反映されません。' : 'このコンテストは未開始です。この提出は確認用であり、ランキングには反映されません。'}</p>
+        <form method="POST" action="/contest/${contestId}/submit/${problemId}" onsubmit="return validateAnswer()">
+            <label>解答 (半角数字のみ):</label><br>
+            <input type="number" name="answer" placeholder="解答を入力" required><br>
+            <button type="submit">提出</button>
+        </form>
+        <script>
+            function validateAnswer() {
+                const answer = document.querySelector('input[name="answer"]').value;
+                const regex = /^[0-9]+$/;
+                if (!regex.test(answer)) {
+                    alert('解答は半角数字のみで入力してください。');
+                    return false;
+                }
+                return true;
+            }
+        </script>
     `;
 } else {
     content += `
@@ -2045,7 +2065,7 @@ if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
         </form>
         ${
             !isContestStartedOrActive(contest)
-                ? '<p style="color: orange;">このコンテストは未開始または終了しています。提出は可能ですが、ランキングには反映されません。</p>'
+                ? '<p style="color: orange;">このコンテストは終了しています。提出は可能ですが、ランキングには反映されません。</p>'
                 : ''
         }
         <script>
@@ -2061,7 +2081,6 @@ if (isContestStartedOrActive(contest) && canManageContest(user, contest)) {
         </script>
     `;
 }
-
 content += `
     <p><a href="${
         hasContestStarted(contest) ? '/contest/' + contestId : '/problems'
