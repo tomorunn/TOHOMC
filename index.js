@@ -1147,9 +1147,6 @@ app.get('/contest/:contestId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
-        if (!canManageContest(user, contest) && !hasContestStarted(contest)) {
-    return res.status(403).send('コンテスト開始前にアクセスすることはできません');
-}
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
