@@ -1417,10 +1417,17 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         }
 
         const contest = contests[contestId];
+        const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
 
+        // コンテスト開催中の提出かつ運営でないユーザーの提出のみを対象
         const submissionsDuringContest = (contest.submissions || []).filter(
-            (sub) => new Date(sub.date).getTime() <= endTime,
+            (sub) => {
+                const submissionTime = new Date(sub.date).getTime();
+                return submissionTime >= startTime &&
+                       submissionTime <= endTime &&
+                       !canManageContest(sub.user, contest);
+            }
         );
 
         const userSubmissionsDuringContestMap = new Map();
@@ -1449,7 +1456,6 @@ app.get('/contest/:contestId/ranking', async (req, res) => {
         });
 
         const userStats = {};
-        const startTime = DateTime.fromISO(contest.startTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
         const firstFA = {};
 
         submissionsDuringContest.sort(
