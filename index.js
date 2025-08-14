@@ -1253,6 +1253,7 @@ app.get('/contest/:contestId', async (req, res) => {
                         <th>点数</th>
                         <th>正解者数/解答者数</th>
                         <th>Writer</th>
+                        <th>Testers</th>
                     </tr>
                     ${problemIds
                         .map((problemId) => {
