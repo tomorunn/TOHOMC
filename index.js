@@ -1357,11 +1357,14 @@ app.get('/contest/:contestId/submissions', async (req, res) => {
         }
 
         const contest = contests[contestId];
+        if (!canManageContest(user, contest) && !hasContestStarted(contest)) {
+            return res.status(403).send('コンテスト開始前にアクセスすることはできません');
+        }
         const nav = generateNav(user);
         const submissions = contest.submissions || [];
         let filteredSubmissions = canManageContest(user, contest)
-            ? submissions
-            : submissions.filter((sub) => sub.user === user.username);
+            ? submissions.filter((sub) => !sub.isTester)
+            : submissions.filter((sub) => sub.user === user.username && !sub.isTester);
 
         const content = `
             <section class="hero">
