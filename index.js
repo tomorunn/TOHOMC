@@ -1148,8 +1148,8 @@ app.get('/contest/:contestId', async (req, res) => {
         const user = await getUserFromCookie(req);
         if (!user) return res.redirect('/login');
         if (!canManageContest(user, contest) && !hasContestStarted(contest)) {
-            return res.status(403).send('コンテスト開始前にアクセスすることはできません');
-        }
+    return res.status(403).send('コンテスト開始前にアクセスすることはできません');
+}
         const contests = await loadContests();
         const contestId = parseInt(req.params.contestId);
 
@@ -1218,7 +1218,6 @@ app.get('/contest/:contestId', async (req, res) => {
                 <p>終了: ${endTimeFormatted}</p>
                 <p>writer: ${writers}</p>
                 <p>tester: ${testers}</p>
-                
                 <p>終了までの残り時間: <span id="timer" class="timer">${
                     isContestNotEnded(contest) ? '' : 'Finished'
                 }</span></p>
@@ -1256,6 +1255,7 @@ app.get('/contest/:contestId', async (req, res) => {
                         <th>点数</th>
                         <th>正解者数/解答者数</th>
                         <th>Writer</th>
+                        <th>Testers</th>
                     </tr>
                     ${problemIds
                         .map((problemId) => {
@@ -1293,6 +1293,7 @@ app.get('/contest/:contestId', async (req, res) => {
                                     <td>${problem.score || 100}</td>
                                     <td>${caSubmittersDuringContest} / ${totalSubmittersDuringContest}</td>
                                     <td>${problem.writer || '未設定'}</td>
+                                    <td>${problemTesters}</td>
                                 </tr>
                             `;
                         })
@@ -1311,7 +1312,6 @@ app.get('/contest/:contestId', async (req, res) => {
         res.status(500).send("サーバーエラーが発生しました");
     }
 });
-```​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
 
 // ルート：コンテスト講評
 app.get('/contest/:contestId/review', async (req, res) => {
