@@ -2084,6 +2084,7 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
         }
     }
 </script>
+`;
 
 
 
