@@ -1885,157 +1885,79 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
                     : ''
             }
         </div>
-<div class="calculator">
-  <h3>電卓</h3>
-  <div class="calc-sub">有効桁数15桁. キーボード対応.</div>
+// 電卓断片を安全に作ってから content に足す
+const calcFragment = [
+'<!-- 電卓 -->',
+'<div class="calculator">',
+'  <h3>電卓</h3>',
+'  <div class="calc-sub">有効桁数15桁. キーボード対応.</div>',
+'  <div class="calc-display"><input type="text" id="calcInput" value="0" readonly></div>',
+'  <div class="calc-buttons">',
+'    <button onclick="CalcPad.sqrt()">√</button>',
+'    <button onclick="CalcPad.mc()">MC</button>',
+'    <button onclick="CalcPad.mr()">MR</button>',
+'    <button onclick="CalcPad.mminus()">M-</button>',
+'    <button onclick="CalcPad.mplus()">M+</button>',
+'    <button onclick="CalcPad.square()">X²</button>',
+'    <button onclick="CalcPad.append(\'7\')">7</button>',
+'    <button onclick="CalcPad.append(\'8\')">8</button>',
+'    <button onclick="CalcPad.append(\'9\')">9</button>',
+'    <button onclick="CalcPad.append(\'/\')">÷</button>',
+'    <button onclick="CalcPad.cube()">X³</button>',
+'    <button onclick="CalcPad.append(\'4\')">4</button>',
+'    <button onclick="CalcPad.append(\'5\')">5</button>',
+'    <button onclick="CalcPad.append(\'6\')">6</button>',
+'    <button onclick="CalcPad.append(\'*\')">×</button>',
+'    <button onclick="CalcPad.ce()">C</button>',
+'    <button onclick="CalcPad.append(\'1\')">1</button>',
+'    <button onclick="CalcPad.append(\'2\')">2</button>',
+'    <button onclick="CalcPad.append(\'3\')">3</button>',
+'    <button onclick="CalcPad.append(\'-\')">-</button>',
+'    <button onclick="CalcPad.ac()">AC</button>',
+'    <button onclick="CalcPad.append(\'0\')">0</button>',
+'    <button onclick="CalcPad.append(\'.\')">.</button>',
+'    <button onclick="CalcPad.eq()">=</button>',
+'    <button onclick="CalcPad.append(\'+\')">+</button>',
+'  </div>',
+'</div>',
+'<style>',
+'  .calculator{margin:20px 0;padding:12px;border:1px solid #dfe1e5;border-radius:12px;width:280px;background:#f1f3f4;box-shadow:0 1px 2px rgba(0,0,0,.05)}',
+'  .calculator h3{margin:4px 0 0 0;font-size:22px;font-weight:700;letter-spacing:.02em;color:#202124}',
+'  .calc-sub{margin:2px 0 8px 0;font-size:12px;color:#5f6368}',
+'  .calc-display{margin-bottom:10px}',
+'  #calcInput{width:100%;padding:10px;font-size:24px;text-align:right;border:1px solid #dfe1e5;border-radius:10px;background:#fff;color:#202124;touch-action:manipulation}',
+'  .calc-buttons{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}',
+'  .calc-buttons button{padding:10px 0;font-size:16px;font-weight:600;border:1px solid #dfe1e5;border-radius:10px;background:#fff;cursor:pointer;user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:rgba(0,0,0,0);transition:transform .02s ease,background-color .15s ease}',
+'  .calc-buttons button:hover{background:#e0e0e0}',
+'  .calc-buttons button:active{transform:scale(.99)}',
+'</style>',
+'<script>',
+'  // 名前空間',
+'  window.CalcPad=(function(){',
+'    let current="0";',
+'    let memory=0;',
+'    const out=()=>document.getElementById("calcInput").value=current;',
+'    // 連続タップで拡大されないよう抑止',
+'    (function(){let last=0;document.addEventListener("touchend",function(e){const now=Date.now();if(now-last<=300)e.preventDefault();last=now;},{passive:false});})();',
+'    function append(v){if(current==="0"&&v!==".")current=v;else current+=v;out()}',
+'    function ac(){current="0";memory=0;out()}',
+'    function ce(){current="0";out()}',
+'    function mr(){current=String(memory);out()}',
+'    function mc(){memory=0}',
+'    function mplus(){memory+=parseFloat(current)||0}',
+'    function mminus(){memory-=parseFloat(current)||0}',
+'    function square(){op(Math.pow,2)}',
+'    function cube(){op(Math.pow,3)}',
+'    function sqrt(){const n=parseFloat(current);if(n<0||Number.isNaN(n)){current="0";out();return}current=Math.sqrt(n).toString();out()}',
+'    function op(fn,p){const n=parseFloat(current);current=fn(n,p).toString();out()}',
+'    function eq(){try{if(!/^[0-9+\\-*/.()\\s]+$/.test(current))throw 0;current=Function("\\"use strict\\";return ("+current+")")().toString();out()}catch(e){current="0";document.getElementById("calcInput").value="Error"}}',
+'    return {append,ac,ce,mr,mc,mplus,mminus,square,cube,sqrt,eq};',
+'  })();',
+'<\/script>'
+].join("");
 
-  <div class="calc-display">
-    <input type="text" id="calcInput" value="0" readonly>
-  </div>
+content += calcFragment;
 
-  <div class="calc-buttons">
-    <button onclick="CalcPad.sqrt()">√</button>
-    <button onclick="CalcPad.mc()">MC</button>
-    <button onclick="CalcPad.mr()">MR</button>
-    <button onclick="CalcPad.mminus()">M-</button>
-    <button onclick="CalcPad.mplus()">M+</button>
-
-    <button onclick="CalcPad.square()">X²</button>
-    <button onclick="CalcPad.append('7')">7</button>
-    <button onclick="CalcPad.append('8')">8</button>
-    <button onclick="CalcPad.append('9')">9</button>
-    <button onclick="CalcPad.append('/')">÷</button>
-
-    <button onclick="CalcPad.cube()">X³</button>
-    <button onclick="CalcPad.append('4')">4</button>
-    <button onclick="CalcPad.append('5')">5</button>
-    <button onclick="CalcPad.append('6')">6</button>
-    <button onclick="CalcPad.append('*')">×</button>
-
-    <button onclick="CalcPad.ce()">C</button>
-    <button onclick="CalcPad.append('1')">1</button>
-    <button onclick="CalcPad.append('2')">2</button>
-    <button onclick="CalcPad.append('3')">3</button>
-    <button onclick="CalcPad.append('-')">-</button>
-
-    <button onclick="CalcPad.ac()">AC</button>
-    <button onclick="CalcPad.append('0')">0</button>
-    <button onclick="CalcPad.append('.')">.</button>
-    <button onclick="CalcPad.eq()">=</button>
-    <button onclick="CalcPad.append('+')">+</button>
-  </div>
-</div>
-
-<style>
-  .calculator {
-    margin: 20px 0;
-    padding: 12px;
-    border: 1px solid #dfe1e5;
-    border-radius: 12px;
-    width: 280px;
-    background-color: #f1f3f4;
-    box-shadow: 0 1px 2px rgba(0,0,0,.05);
-  }
-  .calculator h3 {
-    margin: 4px 0 0 0;
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: .02em;
-    color: #202124;
-  }
-  .calc-sub {
-    margin: 2px 0 8px 0;
-    font-size: 12px;
-    color: #5f6368;
-  }
-  .calc-display { margin-bottom: 10px; }
-  #calcInput {
-    width: 100%;
-    padding: 10px;
-    font-size: 24px; /* 16px超でダブルタップ拡大を避ける */
-    text-align: right;
-    border: 1px solid #dfe1e5;
-    border-radius: 10px;
-    background-color: #fff;
-    color: #202124;
-    touch-action: manipulation;
-  }
-  .calc-buttons {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 6px;
-  }
-  .calc-buttons button {
-    padding: 10px 0;
-    font-size: 16px;
-    font-weight: 600;
-    border: 1px solid #dfe1e5;
-    border-radius: 10px;
-    background-color: #fff;
-    cursor: pointer;
-    user-select: none;
-    touch-action: manipulation; /* 連続タップでも拡大しない */
-    -webkit-tap-highlight-color: rgba(0,0,0,0);
-    transition: transform .02s ease, background-color .15s ease;
-  }
-  .calc-buttons button:hover { background-color: #e0e0e0; }
-  .calc-buttons button:active { transform: scale(.99); }
-</style>
-
-<script>
-  // 電卓はこの名前空間だけを汚す
-  window.CalcPad = (function(){
-    let current = '0';
-    let memory = 0;
-    const out = () => document.getElementById('calcInput').value = current;
-
-    // iOSのダブルタップ拡大を抑止(連続タップはそのまま2回入力)
-    (function(){
-      let last = 0;
-      document.addEventListener('touchend', function(e){
-        const now = Date.now();
-        if (now - last <= 300) e.preventDefault();
-        last = now;
-      }, {passive:false});
-    })();
-
-    function append(v){
-      if (current === '0' && v !== '.') current = v;
-      else current += v;
-      out();
-    }
-
-    function ac(){ current = '0'; memory = 0; out(); }
-    function ce(){ current = '0'; out(); }
-    function mr(){ current = String(memory); out(); }
-    function mc(){ memory = 0; }
-    function mplus(){ memory += parseFloat(current) || 0; }
-    function mminus(){ memory -= parseFloat(current) || 0; }
-
-    function square(){ op(Math.pow, 2); }
-    function cube(){ op(Math.pow, 3); }
-    function sqrt(){
-      const num = parseFloat(current);
-      if (num < 0 || Number.isNaN(num)) { current = '0'; out(); return; }
-      current = Math.sqrt(num).toString(); out();
-    }
-    function op(fn, p){
-      const num = parseFloat(current);
-      current = fn(num, p).toString(); out();
-    }
-
-    function eq(){
-      try{
-        if (!/^[0-9+\-*/.()\s]+$/.test(current)) throw new Error();
-        current = Function('"use strict";return (' + current + ')')().toString();
-        out();
-      }catch(e){ current = '0'; document.getElementById('calcInput').value = 'Error'; }
-    }
-
-    // 公開API
-    return { append, ac, ce, mr, mc, mplus, mminus, square, cube, sqrt, eq };
-  })();
-<\/script>
 
 
 
