@@ -1885,307 +1885,194 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
                     : ''
             }
         </div>
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <!-- ダブルタップ拡大を無効化, 連続タップで普通に入力できるようにする -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>電卓</title>
-  <style>
-    :root {
-      --bg: #f6f7f9;
-      --card: #ffffff;
-      --muted: #6b7280;
-      --border: #e5e7eb;
-      --text: #111827;
-      --accent: #2563eb;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; padding: 24px;
-      background: var(--bg); color: var(--text);
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
-      -webkit-font-smoothing: antialiased;
-    }
-    .calculator {
-      width: 360px; max-width: 100%;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 6px 24px rgba(17, 24, 39, .06);
-      padding: 16px 16px 18px;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation; /* ダブルタップのズーム抑止 */
-    }
-    .heading {
-      display: flex; align-items: center; gap: 12px; margin-bottom: 4px;
-    }
-    .heading svg { width: 28px; height: 28px; color: var(--text); }
-    .title { font-size: 28px; font-weight: 700; letter-spacing: .02em; }
-    .sub {
-      margin: 4px 0 14px; font-size: 13px; color: var(--muted);
-    }
-    .display {
-      background: #f3f4f6;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px 14px;
-      margin-bottom: 14px;
-      height: 64px;
-      display: flex; align-items: center; justify-content: flex-end;
-      font-variant-numeric: tabular-nums;
-      overflow: hidden;
-    }
-    .display input {
-      width: 100%;
-      border: none; outline: none;
-      background: transparent;
-      text-align: right;
-      font-size: 32px; /* 16px未満だとiOSがズームすることがある */
-      line-height: 1; color: var(--text);
-    }
-    .keys {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 8px;
-    }
-    button.key {
-      height: 48px;
-      border: 1px solid var(--border);
-      background: #fff;
-      border-radius: 10px;
-      font-size: 16px;
-      cursor: pointer;
-      transition: transform .03s ease, background .15s ease;
-      -webkit-tap-highlight-color: rgba(0,0,0,0);
-    }
-    button.key:active { transform: translateY(1px); }
-    .op   { background: #f8fafc; }
-    .eq   { background: var(--accent); color: #fff; border-color: #1e40af; }
-    .danger { background: #fef2f2; color: #991b1b; }
-    .muted  { color: var(--muted); }
-    .span-2 { grid-column: span 2; }
-  </style>
-</head>
-<body>
-  <div class="calculator" id="calc">
-    <div class="heading">
-      <!-- シンプルなSVGアイコン -->
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="2" width="18" height="20" rx="3" ry="3"></rect>
-        <rect x="6" y="5" width="12" height="5" rx="1"></rect>
-        <path d="M7 13h2M7 17h2M11 13h2M11 17h2M15 13h2M15 17h2"></path>
-      </svg>
-      <div class="title">電卓</div>
-    </div>
-    <div class="sub">有効桁数15桁. キーボード対応.</div>
+<div class="calculator">
+  <h3 class="calc-title">電卓</h3>
+  <div class="calc-sub">有効桁数15桁. キーボード対応.</div>
 
-    <div class="display">
-      <input id="display" type="text" value="0" inputmode="none" readonly>
-    </div>
-
-    <div class="keys" id="keys">
-      <!-- 1行目 -->
-      <button class="key op" data-action="sqrt">√</button>
-      <button class="key muted" data-action="mc">MC</button>
-      <button class="key muted" data-action="mr">MR</button>
-      <button class="key muted" data-action="m-">M-</button>
-      <button class="key muted" data-action="m+">M+</button>
-
-      <!-- 2行目 -->
-      <button class="key op" data-action="square">X²</button>
-      <button class="key" data-key="7">7</button>
-      <button class="key" data-key="8">8</button>
-      <button class="key" data-key="9">9</button>
-      <button class="key op" data-op="/">÷</button>
-
-      <!-- 3行目 -->
-      <button class="key op" data-action="cube">X³</button>
-      <button class="key" data-key="4">4</button>
-      <button class="key" data-key="5">5</button>
-      <button class="key" data-key="6">6</button>
-      <button class="key op" data-op="*">×</button>
-
-      <!-- 4行目 -->
-      <button class="key danger" data-action="c">C</button>
-      <button class="key" data-key="1">1</button>
-      <button class="key" data-key="2">2</button>
-      <button class="key" data-key="3">3</button>
-      <button class="key op" data-op="-">-</button>
-
-      <!-- 5行目 -->
-      <button class="key danger" data-action="ac">AC</button>
-      <button class="key" data-key="0">0</button>
-      <button class="key" data-dot=".">.</button>
-      <button class="key eq" data-action="equal">=</button>
-      <button class="key op" data-op="+">+</button>
-    </div>
+  <div class="calc-display">
+    <input id="calcInput" value="0" readonly inputmode="none" aria-label="表示">
   </div>
 
-  <script>
-    // 状態
-    const disp = document.getElementById('display');
-    const keys = document.getElementById('keys');
+  <div class="calc-buttons" id="calcButtons">
+    <!-- 1行目 -->
+    <button class="key op" onclick="squareRoot()">√</button>
+    <button class="key muted" onclick="memoryClear()">MC</button>
+    <button class="key muted" onclick="memoryRecall()">MR</button>
+    <button class="key muted" onclick="memorySubtract()">M-</button>
+    <button class="key muted" onclick="memoryAdd()">M+</button>
+    <!-- 2行目 -->
+    <button class="key op" onclick="square()">X²</button>
+    <button class="key" onclick="appendToCalc('7')">7</button>
+    <button class="key" onclick="appendToCalc('8')">8</button>
+    <button class="key" onclick="appendToCalc('9')">9</button>
+    <button class="key op" onclick="appendToCalc('/')">÷</button>
+    <!-- 3行目 -->
+    <button class="key op" onclick="cube()">X³</button>
+    <button class="key" onclick="appendToCalc('4')">4</button>
+    <button class="key" onclick="appendToCalc('5')">5</button>
+    <button class="key" onclick="appendToCalc('6')">6</button>
+    <button class="key op" onclick="appendToCalc('*')">×</button>
+    <!-- 4行目 -->
+    <button class="key danger" onclick="clearEntry()">C</button>
+    <button class="key" onclick="appendToCalc('1')">1</button>
+    <button class="key" onclick="appendToCalc('2')">2</button>
+    <button class="key" onclick="appendToCalc('3')">3</button>
+    <button class="key op" onclick="appendToCalc('-')">-</button>
+    <!-- 5行目 -->
+    <button class="key danger" onclick="clearCalc()">AC</button>
+    <button class="key" onclick="appendToCalc('0')">0</button>
+    <button class="key" onclick="appendDot()">.</button>
+    <button class="key eq" onclick="calculate()">=</button>
+    <button class="key op" onclick="appendToCalc('+')">+</button>
+  </div>
+</div>
 
-    let expr = '0';          // 画面に表示している式
-    let justEvaluated = false;
-    let memory = 0;
+<style>
+  /* カード風, 画像の雰囲気に寄せる */
+  .calculator{
+    margin:16px 0; padding:16px; width:360px; max-width:100%;
+    background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+    box-shadow:0 6px 24px rgba(17,24,39,.06);
+    user-select:none; -webkit-user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:manipulation; /* ダブルタップ拡大の抑止 */
+  }
+  .calc-title{margin:0 0 2px; font-size:28px; font-weight:800; letter-spacing:.02em;}
+  .calc-sub{margin:0 0 12px; color:#6b7280; font-size:13px;}
+  .calc-display{margin-bottom:12px; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:10px; padding:14px;}
+  #calcInput{
+    width:100%; border:none; outline:none; background:transparent;
+    text-align:right; font-variant-numeric:tabular-nums;
+    font-size:32px; line-height:1; color:#111827;
+  }
 
-    // 15桁フォーマット
-    function formatNumber(n) {
-      if (!isFinite(n)) return 'Error';
-      // toPrecisionは指数表記が出ることがあるので抑制
-      let s = Number(n).toPrecision(15);
-      // 余分な0と小数点を削除
-      if (s.indexOf('e') !== -1) return String(Number(s)); // 指数表記はそのまま
-      s = s.replace(/\.0+$/,'').replace(/(\.\d*?[1-9])0+$/,'$1').replace(/\.$/,'');
-      // 桁が多すぎる場合の安全策
-      if (s.length > 20) s = Number(n).toExponential(10);
-      return s;
-    }
+  .calc-buttons{
+    display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
+  }
+  .key{
+    height:48px; border:1px solid #e5e7eb; border-radius:10px;
+    background:#fff; font-size:16px; cursor:pointer;
+    transition:transform .03s ease, background .15s ease;
+    touch-action:manipulation; /* ここでも拡大抑止 */
+  }
+  .key:active{ transform:translateY(1px); }
+  .op{ background:#f8fafc; }
+  .muted{ color:#6b7280; }
+  .danger{ background:#fef2f2; color:#991b1b; }
+  .eq{ background:#2563eb; color:#fff; border-color:#1e40af; }
+</style>
 
-    function setDisplay(v) {
-      expr = v;
-      disp.value = v;
-    }
+<script>
+  // --- 状態 ---
+  let currentInput = '0';
+  let memory = 0;
+  let justEvaluated = false; // =の直後かどうか
 
-    function getCurrentNumber() {
-      // 最後の演算子以降を取り出す
-      const idx = Math.max(expr.lastIndexOf('+'), expr.lastIndexOf('-'), expr.lastIndexOf('*'), expr.lastIndexOf('/'));
-      return idx >= 0 ? expr.slice(idx + 1) : expr;
-    }
+  const $disp = document.getElementById('calcInput');
+  const $btns = document.getElementById('calcButtons');
 
-    function replaceLastNumber(newNum) {
-      const idx = Math.max(expr.lastIndexOf('+'), expr.lastIndexOf('-'), expr.lastIndexOf('*'), expr.lastIndexOf('/'));
-      setDisplay((idx >= 0 ? expr.slice(0, idx + 1) : '') + newNum);
-    }
+  // iOSのダブルタップズーム対策: dblclick既定動作を潰す
+  $btns.addEventListener('dblclick', e => e.preventDefault());
 
-    function sanitize(input) {
-      // 許可文字のみ
-      if (!/^[0-9+\-*/.() ]+$/.test(input)) return null;
-      // 先頭に不適切な演算子が続くなどを軽減
-      return input.replace(/(^|[+\-*/])\./g, '$10.') // 先頭の.を0.に
-                  .replace(/([+\-*/])([+\-*/])+/g, '$2'); // 連続演算子は最後の一つに
-    }
+  // --- 共通ユーティリティ ---
+  function setDisplay(v){ currentInput = v; $disp.value = v; }
 
-    function evaluateNow() {
-      const s = sanitize(expr);
-      if (s == null) return 'Error';
-      try {
-        // eslint-disable-next-line no-new-func
-        const val = Function('return (' + s + ')')();
-        return formatNumber(val);
-      } catch (_) {
-        return 'Error';
-      }
-    }
+  function sanitize(s){
+    // 数字と基本演算子のみ許可
+    return /^[0-9+\-*/.() ]+$/.test(s) ? s : null;
+  }
+  function safeEval(s){
+    const t = sanitize(s);
+    if (t == null) return 'Error';
+    try{
+      const v = eval(t); // ここは四則演算と小数のみ
+      return Number.isFinite(v) ? v : NaN;
+    }catch{ return NaN; }
+  }
+  function formatted(n){
+    if (!Number.isFinite(n)) return 'Error';
+    // 15桁に整形
+    let s = Number(n).toPrecision(15);
+    if (s.includes('e')) return String(Number(s)); // 指数表記は適度に
+    s = s.replace(/\.0+$/,'').replace(/(\.\d*?[1-9])0+$/,'$1').replace(/\.$/,'');
+    return s;
+  }
+  function lastOpIndex(s){
+    return Math.max(s.lastIndexOf('+'), s.lastIndexOf('-'), s.lastIndexOf('*'), s.lastIndexOf('/'));
+  }
+  function currentNumber(){
+    const i = lastOpIndex(currentInput);
+    return i >= 0 ? currentInput.slice(i+1) : currentInput;
+  }
+  function replaceLastNumber(x){
+    const i = lastOpIndex(currentInput);
+    setDisplay((i >= 0 ? currentInput.slice(0, i+1) : '') + x);
+  }
 
-    // 入力系
-    function pressDigit(d) {
-      if (expr === '0' || justEvaluated) {
-        setDisplay(d);
-      } else {
-        setDisplay(expr + d);
-      }
+  // --- 入力 ---
+  function appendToCalc(v){
+    if (justEvaluated && /[0-9.]/.test(v)){ // =の直後に数字→新規入力
+      setDisplay((v === '.' ? '0.' : v));
       justEvaluated = false;
+      return;
     }
-
-    function pressDot() {
-      if (justEvaluated) { setDisplay('0.'); justEvaluated = false; return; }
-      const cur = getCurrentNumber();
-      if (cur.includes('.')) return;
-      setDisplay(expr + '.');
+    if (currentInput === '0' && /[0-9]/.test(v)){
+      setDisplay(v);
+    }else{
+      setDisplay(currentInput + v);
     }
+    justEvaluated = false;
+  }
+  function appendDot(){
+    if (justEvaluated){ setDisplay('0.'); justEvaluated = false; return; }
+    if (currentNumber().includes('.')) return;
+    setDisplay(currentInput + '.');
+  }
 
-    function pressOp(op) {
-      if (justEvaluated) justEvaluated = false;
-      // 末尾が演算子なら置換
-      if (/[+\-*/]$/.test(expr)) {
-        setDisplay(expr.slice(0, -1) + op);
-      } else {
-        setDisplay(expr + op);
-      }
-    }
+  function clearCalc(){ setDisplay('0'); memory = 0; justEvaluated = false; }
+  function clearEntry(){ replaceLastNumber('0'); justEvaluated = false; }
 
-    function pressEqual() {
-      const res = evaluateNow();
-      setDisplay(res);
-      justEvaluated = true;
-    }
+  // --- メモリ ---
+  function memoryClear(){ memory = 0; }
+  function memoryRecall(){ setDisplay(formatted(memory)); justEvaluated = true; }
+  function memoryAdd(){ const v = safeEval(currentInput); memory += Number.isFinite(v)? v:0; }
+  function memorySubtract(){ const v = safeEval(currentInput); memory -= Number.isFinite(v)? v:0; }
 
-    function pressC() {
-      // 現在の数だけクリア
-      replaceLastNumber('0');
-      justEvaluated = false;
-    }
+  // --- 単項演算（表示値に対して） ---
+  function applyUnary(fn){
+    const v = safeEval(currentInput);
+    if (!Number.isFinite(v)) { setDisplay('Error'); justEvaluated = true; return; }
+    const out = fn(v);
+    setDisplay(formatted(out));
+    justEvaluated = true;
+  }
+  function square(){ applyUnary(x => x*x); }
+  function cube(){ applyUnary(x => x*x*x); }
+  function squareRoot(){ applyUnary(x => x < 0 ? NaN : Math.sqrt(x)); }
 
-    function pressAC() {
-      setDisplay('0');
-      justEvaluated = false;
-      memory = 0;
-    }
+  // --- 計算 ---
+  function calculate(){
+    const v = safeEval(currentInput);
+    setDisplay(formatted(v));
+    justEvaluated = true;
+  }
 
-    // 高度演算は表示値に対して
-    function applyUnary(fn) {
-      const val = evaluateNow();
-      if (val === 'Error') { setDisplay('Error'); justEvaluated = true; return; }
-      const num = Number(val);
-      const out = fn(num);
-      setDisplay(formatNumber(out));
-      justEvaluated = true;
-    }
+  // --- キーボード ---
+  window.addEventListener('keydown', e => {
+    const k = e.key;
+    if (/[0-9]/.test(k)) { appendToCalc(k); return; }
+    if (k === '.') { appendDot(); return; }
+    if (k === '+' || k === '-' || k === '*' || k === '/') { appendToCalc(k); return; }
+    if (k === 'Enter' || k === '=') { e.preventDefault(); calculate(); return; }
+    if (k === 'Backspace') { clearEntry(); return; }
+    if (k.toLowerCase() === 'a') { clearCalc(); return; }
+    if (k.toLowerCase() === 'c') { clearEntry(); return; }
+  });
 
-    // メモリ
-    function memAdd()  { const v = Number(evaluateNow() || 0); memory += v; }
-    function memSub()  { const v = Number(evaluateNow() || 0); memory -= v; }
-    function memRecall(){ setDisplay(formatNumber(memory)); justEvaluated = true; }
-    function memClear(){ memory = 0; }
+  // 初期表示
+  setDisplay('0');
+</script>
 
-    // クリック, ダブルクリックも同様に入力として扱う
-    keys.addEventListener('click', handleButton);
-    keys.addEventListener('dblclick', e => { e.preventDefault(); handleButton(e); });
-
-    function handleButton(e) {
-      const btn = e.target.closest('button.key');
-      if (!btn) return;
-
-      if (btn.dataset.key)         return pressDigit(btn.dataset.key);
-      if (btn.dataset.dot !== undefined) return pressDot();
-      if (btn.dataset.op)          return pressOp(btn.dataset.op);
-
-      switch (btn.dataset.action) {
-        case 'equal':  return pressEqual();
-        case 'c':      return pressC();
-        case 'ac':     return pressAC();
-        case 'sqrt':   return applyUnary(x => x < 0 ? NaN : Math.sqrt(x));
-        case 'square': return applyUnary(x => x * x);
-        case 'cube':   return applyUnary(x => x * x * x);
-        case 'm+':     return memAdd();
-        case 'm-':     return memSub();
-        case 'mr':     return memRecall();
-        case 'mc':     return memClear();
-      }
-    }
-
-    // キーボード対応
-    window.addEventListener('keydown', (e) => {
-      const k = e.key;
-      if (k >= '0' && k <= '9')      { pressDigit(k); return; }
-      if (k === '.')                 { pressDot(); return; }
-      if (k === '+' || k === '-' || k === '*' || k === '/') { pressOp(k); return; }
-      if (k === 'Enter' || k === '='){ e.preventDefault(); pressEqual(); return; }
-      if (k === 'Backspace')         { pressC(); return; }
-      if (k.toLowerCase() === 'c')   { pressC(); return; }
-      if (k.toLowerCase() === 'a')   { pressAC(); return; }
-    });
-
-    // 初期表示
-    setDisplay('0');
-  </script>
-</body>
-</html>
 
 
 
