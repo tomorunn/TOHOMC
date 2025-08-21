@@ -1817,6 +1817,7 @@ app.get('/mypage', async (req, res) => {
 });
 
 // ルート：問題提出ページ
+// ルート：問題提出ページ
 app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
     try {
         const user = await getUserFromCookie(req);
@@ -1835,6 +1836,18 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
             return res.status(404).send('無効な問題IDです');
         }
 
+        // 状態フラグ
+        const isAdmin = canManageContest(user, contest);
+        const hasStarted = hasContestStarted(contest);
+        const notEnded = isContestNotEnded(contest);
+        const isActive = isContestStartedOrActive(contest); // 開催中(開始済み かつ 未終了)
+        const ended = !notEnded;
+
+        // 要件1: 未開始のコンテストは管理者以外アクセス不可
+        if (!hasStarted && !isAdmin) {
+            return res.status(403).send('このコンテストは未開始のため, 管理者以外はアクセスできません');
+        }
+
         const endTime = DateTime.fromISO(contest.endTime, { zone: 'Asia/Tokyo' }).toJSDate().getTime();
 
         let displayContent = problem.content || '未設定';
@@ -1845,11 +1858,9 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
         let content = `
     <section class="hero">
         <h2>${contest.title} - 問題 ${problemId}</h2>
-        <p>終了までの残り時間: <span id="timer" class="timer">${
-            isContestNotEnded(contest) ? '' : '終了済み'
-        }</span></p>
+        <p>終了までの残り時間: <span id="timer" class="timer">${notEnded ? '' : '終了済み'}</span></p>
         ${
-            isContestNotEnded(contest)
+            notEnded
                 ? `
                     <script>
                         const endTime = ${endTime};
@@ -2041,20 +2052,22 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
         </script>
 `;
 
-if (!isContestNotEnded(contest) && problem.explanation) {
-    content += `<p><a href="/contest/${contestId}/explanation/${problemId}">解答解説を見る</a></p>`;
-}
-
-if (!isContestStartedOrActive(contest) && !canManageContest(user, contest)) {
-    content += `
-        <p style="color: orange;">このコンテストは未開始または終了しています。解答の提出はできません。</p>
-    `;
-} else if (canManageContest(user, contest)) {
-    content += `
-        <p style="color: orange;">${isContestStartedOrActive(contest) ? 'あなたはこのコンテストの管理者権限を持っているため、開催中の提出はランキングに反映されません。' : 'このコンテストは未開始です。この提出は確認用であり、ランキングには反映されません。'}</p>
+        // 管理者 or 一般ユーザ向けの提出フォームと注意書き
+        if (isAdmin) {
+            // 管理者は未開始でもアクセス可, いずれの場合もランキング反映なし
+            content += `
+        <p style="color: orange;">
+            ${
+                !hasStarted
+                    ? 'このコンテストは未開始です. この提出は確認用であり, ランキングには反映されません.'
+                    : ended
+                        ? 'このコンテストは終了しています. この提出は確認用であり, ランキングには反映されません.'
+                        : 'あなたはこのコンテストの管理者権限を持っています. 開催中の提出はランキングに反映されません.'
+            }
+        </p>
         <form method="POST" action="/contest/${contestId}/submit/${problemId}" onsubmit="return validateAnswer()">
             <label>解答 (半角数字のみ):</label><br>
-            <input type="number" name="answer" placeholder="解答を入力" required><br>
+            <input type="number" name="answer" inputmode="numeric" pattern="[0-9]*" placeholder="解答を入力" required><br>
             <button type="submit">提出</button>
         </form>
         <script>
@@ -2069,39 +2082,34 @@ if (!isContestStartedOrActive(contest) && !canManageContest(user, contest)) {
             }
         </script>
     `;
-} else {
-    content += `
+        } else {
+            // 一般ユーザ
+            content += `
         <form method="POST" action="/contest/${contestId}/submit/${problemId}" onsubmit="return validateAnswer()">
             <label>解答 (半角数字のみ):</label><br>
-            <input type="number" name="answer" placeholder="解答を入力" required><br>
+            <input type="number" name="answer" inputmode="numeric" pattern="[0-9]*" placeholder="解答を入力" required><br>
             <button type="submit">提出</button>
         </form>
-        ${
-            !isContestStartedOrActive(contest)
-                ? '<p style="color: orange;">このコンテストは終了しています。提出は可能ですが、ランキングには反映されません。</p>'
-                : ''
+        ${ended ? '<p style="color: orange;">このコンテストは終了しています. 提出は可能ですが, ランキングには反映されません.</p>' : ''}
+        <script>
+            function validateAnswer() {
+                const answer = document.querySelector('input[name="answer"]').value;
+                const regex = /^[0-9]+$/;
+                if (!regex.test(answer)) {
+                    alert('解答は半角数字のみで入力してください。');
+                    return false;
+                }
+                return true;
+            }
+        </script>
+    `;
         }
-        <script>
-            function validateAnswer() {
-                const answer = document.querySelector('input[name="answer"]').value;
-                const regex = /^[0-9]+$/;
-                if (!regex.test(answer)) {
-                    alert('解答は半角数字のみで入力してください。');
-                    return false;
-                }
-                return true;
-            }
-        </script>
-    `;
-}
-content += `
-    <p><a href="${
-        hasContestStarted(contest) ? '/contest/' + contestId : '/problems'
-    }">${
-        hasContestStarted(contest) ? '問題一覧' : 'PROBLEMSページ'
-    }に戻る</a></p>
+
+        content += `
+    <p><a href="${hasStarted ? '/contest/' + contestId : '/problems'}">${hasStarted ? '問題一覧' : 'PROBLEMSページ'}に戻る</a></p>
     </section>
 `;
+
         res.send(generatePage(nav, content));
     } catch (err) {
         console.error('問題提出ページエラー:', err);
