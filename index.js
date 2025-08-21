@@ -1885,333 +1885,206 @@ app.get('/contest/:contestId/submit/:problemId', async (req, res) => {
                     : ''
             }
         </div>
-        <!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <!-- 連続タップでの拡大を抑止 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>電卓</title>
-  <style>
-    :root {
-      --card: #f1f3f4;
-      --border: #dfe1e5;
-      --bg: #ffffff;
-      --text: #202124;
-      --muted: #5f6368;
-    }
-    html, body {
-      margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-      background: #fafafa;
-      color: var(--text);
-      touch-action: manipulation; /* iOSのダブルタップズーム無効化 */
-    }
+<div class="calculator">
+    <h3>電卓</h3>
+    <div class="calc-sub">有効桁数15桁. キーボード対応.</div>
+
+    <div class="calc-display">
+        <input type="text" id="calcInput" value="0" readonly>
+    </div>
+
+    <div class="calc-buttons">
+        <button onclick="squareRoot()">√</button>
+        <button onclick="memoryClear()">MC</button>
+        <button onclick="memoryRecall()">MR</button>
+        <button onclick="memorySubtract()">M-</button>
+        <button onclick="memoryAdd()">M+</button>
+
+        <button onclick="square()">X²</button>
+        <button onclick="appendToCalc('7')">7</button>
+        <button onclick="appendToCalc('8')">8</button>
+        <button onclick="appendToCalc('9')">9</button>
+        <button onclick="appendToCalc('/')">÷</button>
+
+        <button onclick="cube()">X³</button>
+        <button onclick="appendToCalc('4')">4</button>
+        <button onclick="appendToCalc('5')">5</button>
+        <button onclick="appendToCalc('6')">6</button>
+        <button onclick="appendToCalc('*')">×</button>
+
+        <button onclick="clearEntry()">C</button>
+        <button onclick="appendToCalc('1')">1</button>
+        <button onclick="appendToCalc('2')">2</button>
+        <button onclick="appendToCalc('3')">3</button>
+        <button onclick="appendToCalc('-')">-</button>
+
+        <button onclick="clearCalc()">AC</button>
+        <button onclick="appendToCalc('0')">0</button>
+        <button onclick="appendToCalc('.')">.</button>
+        <button onclick="calculate()">=</button>
+        <button onclick="appendToCalc('+')">+</button>
+    </div>
+</div>
+<style>
     .calculator {
-      margin: 20px;
-      max-width: 360px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 1px 2px rgba(0,0,0,.05);
-      overflow: hidden;
+        margin: 20px 0;
+        padding: 12px;
+        border: 1px solid #dfe1e5;
+        border-radius: 12px;
+        width: 280px;
+        background-color: #f1f3f4;
+        box-shadow: 0 1px 2px rgba(0,0,0,.05);
     }
-    .calc-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px 16px 8px 16px;
-    }
-    .calc-header .icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
-      background: #e8eaed;
-      border: 1px solid var(--border);
-    }
-    .calc-title {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: .02em;
+    .calculator h3 {
+        margin: 4px 0 0 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: .02em;
+        color: #202124;
     }
     .calc-sub {
-      padding: 0 16px 8px 16px;
-      font-size: 12px;
-      color: var(--muted);
+        margin: 2px 0 8px 0;
+        font-size: 12px;
+        color: #5f6368;
     }
     .calc-display {
-      padding: 0 16px 12px 16px;
+        margin-bottom: 10px;
     }
     #calcInput {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 12px 10px;
-      font-size: 28px; /* 16px以上にしてモバイル拡大を防ぐ */
-      line-height: 1.2;
-      text-align: right;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: var(--bg);
-      color: var(--text);
+        width: 100%;
+        padding: 10px;
+        font-size: 24px; /* 16px以上にしてダブルタップ拡大を回避 */
+        text-align: right;
+        border: 1px solid #dfe1e5;
+        border-radius: 10px;
+        background-color: #fff;
+        color: #202124;
     }
     .calc-buttons {
-      padding: 12px;
-      display: grid;
-      grid-template-columns: repeat(5, 1fr); /* 画像のレイアウトに合わせて5列 */
-      gap: 8px;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr); /* 画像と同じ5列 */
+        gap: 6px;
     }
-    .btn {
-      padding: 12px 0;
-      font-size: 16px;
-      font-weight: 600;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: #ffffff;
-      cursor: pointer;
-      user-select: none;
-      touch-action: manipulation; /* 連続タップ時の拡大防止 */
-      -webkit-tap-highlight-color: rgba(0,0,0,0);
-      transition: transform .02s ease, background-color .15s ease;
+    .calc-buttons button {
+        padding: 10px 0;
+        font-size: 16px;
+        font-weight: 600;
+        border: 1px solid #dfe1e5;
+        border-radius: 10px;
+        background-color: #fff;
+        cursor: pointer;
+        user-select: none;
+        touch-action: manipulation; /* 連続タップ時の拡大防止 */
+        -webkit-tap-highlight-color: rgba(0,0,0,0);
+        transition: transform .02s ease, background-color .15s ease;
     }
-    .btn:active { transform: scale(.99); }
-    .btn.op { background: #f8f9fa; }
-    .btn.equal { background: #e8f0fe; border-color: #aecbfa; }
-    .btn.wide { grid-column: span 1; }
-    .footer {
-      height: 8px;
-    }
-  </style>
-</head>
-<body>
-  <div class="calculator" aria-label="簡易電卓">
-    <div class="calc-header">
-      <div class="icon" aria-hidden="true"></div>
-      <div>
-        <div class="calc-title">電卓</div>
-      </div>
-    </div>
-    <div class="calc-sub">有効桁数15桁. キーボード対応.</div>
-    <div class="calc-display">
-      <input type="text" id="calcInput" value="0" readonly>
-    </div>
-
-    <div class="calc-buttons" id="keys">
-      <!-- 1行目 -->
-      <button class="btn op" data-fn="sqrt">√</button>
-      <button class="btn op" data-fn="mc">MC</button>
-      <button class="btn op" data-fn="mr">MR</button>
-      <button class="btn op" data-fn="mminus">M-</button>
-      <button class="btn op" data-fn="mplus">M+</button>
-
-      <!-- 2行目 -->
-      <button class="btn op" data-fn="pow2">X²</button>
-      <button class="btn" data-val="7">7</button>
-      <button class="btn" data-val="8">8</button>
-      <button class="btn" data-val="9">9</button>
-      <button class="btn op" data-val="/">÷</button>
-
-      <!-- 3行目 -->
-      <button class="btn op" data-fn="pow3">X³</button>
-      <button class="btn" data-val="4">4</button>
-      <button class="btn" data-val="5">5</button>
-      <button class="btn" data-val="6">6</button>
-      <button class="btn op" data-val="*">×</button>
-
-      <!-- 4行目 -->
-      <button class="btn op" data-fn="ce">C</button>
-      <button class="btn" data-val="1">1</button>
-      <button class="btn" data-val="2">2</button>
-      <button class="btn" data-val="3">3</button>
-      <button class="btn op" data-val="-">-</button>
-
-      <!-- 5行目 -->
-      <button class="btn op" data-fn="ac">AC</button>
-      <button class="btn" data-val="0">0</button>
-      <button class="btn" data-val=".">.</button>
-      <button class="btn equal" data-fn="eq">=</button>
-      <button class="btn op" data-val="+">+</button>
-    </div>
-    <div class="footer"></div>
-  </div>
-
-  <script>
-    // 状態
-    let expr = "0";
+    .calc-buttons button:hover { background-color: #e0e0e0; }
+    .calc-buttons button:active { transform: scale(.99); }
+</style>
+<script>
+    let currentInput = '0';
     let memory = 0;
-    let justEvaluated = false;
-    const displayEl = document.getElementById("calcInput");
-    const keys = document.getElementById("keys");
 
-    // 連続タップでのページ拡大を抑止(iOS対策)
+    // iOSのダブルタップ拡大を抑止, 連続タップはそのまま2回入力される
     (function preventDoubleTapZoom(){
-      let lastTouchEnd = 0;
-      document.addEventListener("touchend", function(e){
-        const now = Date.now();
-        if (now - lastTouchEnd <= 300) {
-          e.preventDefault();
-        }
-        lastTouchEnd = now;
-      }, {passive:false});
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function(e){
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, {passive:false});
     })();
 
-    function updateDisplay() {
-      // 15桁制限風の丸め
-      const s = String(expr);
-      displayEl.value = s.length > 30 ? s.slice(-30) : s;
-    }
-
-    function getValue() {
-      try {
-        // 許可された文字だけに制限
-        if (!/^[0-9+\-*/.()\s]+$/.test(expr)) return NaN;
-        const val = Function(`"use strict";return (${expr})`)();
-        return Number(val);
-      } catch {
-        return NaN;
-      }
-    }
-
-    function setExprFromNumber(num) {
-      if (!Number.isFinite(num)) {
-        expr = "0";
-        displayEl.value = "Error";
-        return;
-      }
-      // 不要な "+0" などを避ける
-      expr = String(num);
-      updateDisplay();
-    }
-
-    function append(val) {
-      if (justEvaluated && /[0-9.]/.test(val)) {
-        // 計算直後に数字を押したら新規入力
-        expr = (val === ".") ? "0." : val;
-      } else {
-        if (expr === "0" && /[0-9]/.test(val)) {
-          expr = val;
+    function appendToCalc(value) {
+        if (currentInput === '0' && value !== '.') {
+            currentInput = value;
         } else {
-          expr += val;
+            currentInput += value;
         }
-      }
-      justEvaluated = false;
-      updateDisplay();
+        document.getElementById('calcInput').value = currentInput;
     }
 
-    function backspace() {
-      if (expr.length <= 1) expr = "0";
-      else expr = expr.slice(0, -1);
-      updateDisplay();
+    function clearCalc() {
+        currentInput = '0';
+        memory = 0;
+        document.getElementById('calcInput').value = currentInput;
     }
 
-    // ボタン操作
-    keys.addEventListener("pointerdown", (e) => {
-      const btn = e.target.closest(".btn");
-      if (!btn) return;
-      e.preventDefault(); // タップ時のズーム抑止
+    function clearEntry() {
+        currentInput = '0';
+        document.getElementById('calcInput').value = currentInput;
+    }
 
-      const val = btn.getAttribute("data-val");
-      const fn  = btn.getAttribute("data-fn");
+    function memoryClear() {
+        memory = 0;
+    }
 
-      if (val !== null) {
-        append(val); // 連続タップで同じ数字がそのまま2回入る
-        return;
-      }
+    function memoryRecall() {
+        currentInput = memory.toString();
+        document.getElementById('calcInput').value = currentInput;
+    }
 
-      switch (fn) {
-        case "eq": {
-          const v = getValue();
-          if (Number.isFinite(v)) {
-            setExprFromNumber(v);
-            justEvaluated = true;
-          } else {
-            displayEl.value = "Error";
-            expr = "0";
-            justEvaluated = false;
-          }
-          break;
-        }
-        case "ac":
-          expr = "0";
-          memory = 0;
-          justEvaluated = false;
-          updateDisplay();
-          break;
-        case "ce":
-          expr = "0";
-          justEvaluated = false;
-          updateDisplay();
-          break;
-        case "sqrt": {
-          const v = getValue();
-          if (v < 0) {
-            displayEl.value = "Error";
-            expr = "0";
-          } else {
-            setExprFromNumber(Math.sqrt(v));
-            justEvaluated = true;
-          }
-          break;
-        }
-        case "pow2": {
-          const v = getValue();
-          setExprFromNumber(Math.pow(v, 2));
-          justEvaluated = true;
-          break;
-        }
-        case "pow3": {
-          const v = getValue();
-          setExprFromNumber(Math.pow(v, 3));
-          justEvaluated = true;
-          break;
-        }
-        case "mc":
-          memory = 0;
-          break;
-        case "mr":
-          expr = String(memory);
-          justEvaluated = true;
-          updateDisplay();
-          break;
-        case "mplus": {
-          const v = getValue();
-          if (Number.isFinite(v)) memory += v;
-          break;
-        }
-        case "mminus": {
-          const v = getValue();
-          if (Number.isFinite(v)) memory -= v;
-          break;
-        }
-      }
-    });
+    function memorySubtract() {
+        memory -= parseFloat(currentInput) || 0;
+    }
 
-    // キーボード対応
-    window.addEventListener("keydown", (e) => {
-      const k = e.key;
+    function memoryAdd() {
+        memory += parseFloat(currentInput) || 0;
+    }
 
-      if (/[0-9]/.test(k)) { append(k); return; }
-      if (k === ".") { append("."); return; }
-      if (k === "+" || k === "-" || k === "*" || k === "/") { append(k); return; }
-      if (k === "Enter" || k === "=") {
-        const v = getValue();
-        if (Number.isFinite(v)) {
-          setExprFromNumber(v);
-          justEvaluated = true;
-        } else {
-          displayEl.value = "Error";
-          expr = "0";
+    function square() {
+        try {
+            const num = parseFloat(currentInput);
+            currentInput = Math.pow(num, 2).toString();
+            document.getElementById('calcInput').value = currentInput;
+        } catch (e) {
+            document.getElementById('calcInput').value = 'Error';
+            currentInput = '0';
         }
-        return;
-      }
-      if (k === "Escape") { expr = "0"; updateDisplay(); return; }
-      if (k === "Backspace") { backspace(); return; }
-    });
+    }
 
-    // 初期表示
-    updateDisplay();
-  </script>
-</body>
-</html>
+    function cube() {
+        try {
+            const num = parseFloat(currentInput);
+            currentInput = Math.pow(num, 3).toString();
+            document.getElementById('calcInput').value = currentInput;
+        } catch (e) {
+            document.getElementById('calcInput').value = 'Error';
+            currentInput = '0';
+        }
+    }
+
+    function squareRoot() {
+        try {
+            const num = parseFloat(currentInput);
+            if (num < 0) {
+                document.getElementById('calcInput').value = 'Error (負の数)';
+                currentInput = '0';
+            } else {
+                currentInput = Math.sqrt(num).toString();
+                document.getElementById('calcInput').value = currentInput;
+            }
+        } catch (e) {
+            document.getElementById('calcInput').value = 'Error';
+            currentInput = '0';
+        }
+    }
+
+    function calculate() {
+        try {
+            // 許可文字のみ評価
+            if (!/^[0-9+\-*/.()\s]+$/.test(currentInput)) throw new Error('bad expr');
+            currentInput = Function('"use strict";return (' + currentInput + ')')().toString();
+            document.getElementById('calcInput').value = currentInput;
+        } catch (e) {
+            document.getElementById('calcInput').value = 'Error';
+            currentInput = '0';
+        }
+    }
+</script>
+
 
 
         // 管理者 or 一般ユーザ向けの提出フォームと注意書き
